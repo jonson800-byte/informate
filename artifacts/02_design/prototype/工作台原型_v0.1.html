@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Informate 工作台原型 v0.1（医美行业）</title>
+<style>
+  :root {
+    --primary: #1F6E5C;        /* 深墨绿 - 品牌/主按钮/用户气泡 */
+    --primary-light: #E8F3F0;  /* 浅绿 - 选中底/标签底 */
+    --primary-dark: #175A4B;
+    --amber: #C98A3D;          /* 琥珀 - 预警 */
+    --red: #C0392B;            /* 红 - 失败/拦截 */
+    --bg: #F7F8FA;             /* 左右栏浅灰底 */
+    --card: #FFFFFF;
+    --text: #1F2937;
+    --text-secondary: #6B7280;
+    --border: #E5E7EB;
+    --disabled: #D1D5DB;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  body { color: var(--text); background: var(--bg); min-height: 100vh; }
+
+  /* ===== 三栏骨架 ===== */
+  .app { display: flex; height: 100vh; }
+  .left { width: 240px; min-width: 240px; background: var(--bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .center { flex: 1; min-width: 480px; background: var(--card); display: flex; flex-direction: column; }
+  .right { width: 360px; min-width: 360px; background: var(--bg); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
+
+  /* ===== 左栏 ===== */
+  .brand { padding: 18px 16px 14px; border-bottom: 1px solid var(--border); }
+  .brand .logo { font-size: 17px; font-weight: 700; color: var(--primary); }
+  .brand .sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+  .left-scroll { flex: 1; overflow-y: auto; padding: 12px 0; }
+  .section-label { font-size: 11px; color: var(--text-secondary); padding: 8px 16px 6px; }
+  .scene-item { display: flex; align-items: center; gap: 10px; padding: 11px 16px; cursor: pointer; border-left: 3px solid transparent; position: relative; }
+  .scene-item:hover { background: #EDF0F2; }
+  .scene-item.active { background: var(--primary-light); border-left-color: var(--primary); }
+  .scene-item .icon { font-size: 20px; width: 28px; text-align: center; }
+  .scene-item .name { font-size: 14px; font-weight: 500; }
+  .scene-item .badge { font-size: 10px; background: var(--amber); color: #fff; border-radius: 8px; padding: 1px 6px; margin-left: auto; }
+  .scene-item .preview { font-size: 11px; color: var(--text-secondary); margin-top: 2px; display: none; }
+  .scene-item.active .preview { display: block; }
+  .balance-card { margin: 12px 12px 8px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .balance-card .label { font-size: 11px; color: var(--text-secondary); }
+  .balance-card .amount { font-size: 22px; font-weight: 700; color: var(--primary); margin: 2px 0 8px; }
+  .balance-card .amount.warn { color: var(--amber); }
+  .balance-card .row { display: flex; gap: 6px; }
+  .btn { border: none; border-radius: 6px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+  .help { font-size: 11px; color: var(--text-secondary); text-align: center; padding: 10px; }
+
+  /* ===== 中栏 ===== */
+  .topbar { height: 52px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 18px; background: var(--card); }
+  .topbar .tenant { font-size: 13px; color: var(--text-secondary); }
+  .topbar .tenant b { color: var(--text); }
+  .topbar .user-menu { font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+  .chat-area { flex: 1; overflow-y: auto; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .sys-banner { align-self: center; font-size: 12px; background: var(--primary-light); color: var(--primary); padding: 6px 14px; border-radius: 20px; }
+  .msg { max-width: 78%; padding: 11px 14px; font-size: 14px; line-height: 1.6; border-radius: 12px; white-space: pre-wrap; }
+  .msg.user { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.ai { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 4px; position: relative; }
+  .msg.ai .tag { position: absolute; top: -8px; left: 10px; font-size: 10px; background: var(--primary); color: #fff; padding: 0 6px; border-radius: 6px; }
+  .msg.ai .meta { font-size: 11px; color: var(--text-secondary); margin-top: 8px; }
+  .compliance-tip { align-self: center; font-size: 11px; color: var(--amber); background: #FBF3E8; padding: 4px 12px; border-radius: 14px; }
+  .input-area { border-top: 1px solid var(--border); padding: 12px 16px 14px; background: var(--card); }
+  .round-hint { font-size: 11px; color: var(--amber); margin-bottom: 6px; display: none; }
+  .input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .input-row textarea { flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; resize: none; height: 44px; outline: none; }
+  .input-row textarea:focus { border-color: var(--primary); }
+  .send-btn { width: 64px; height: 44px; background: var(--primary); color: #fff; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; }
+  .send-btn:disabled { background: var(--disabled); cursor: not-allowed; }
+
+  /* ===== 右栏 ===== */
+  .right-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 14px; }
+  .tab { padding: 12px 14px; font-size: 13px; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+  .artifacts { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .artifact-empty { font-size: 12px; color: var(--text-secondary); text-align: center; padding: 30px 10px; }
+  .artifact-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .artifact-img { height: 160px; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; position: relative; }
+  .ai-flag { position: absolute; right: 8px; bottom: 8px; font-size: 10px; background: rgba(0,0,0,.55); color: #fff; padding: 2px 7px; border-radius: 10px; }
+  .artifact-body { padding: 10px 12px; }
+  .artifact-title { font-size: 13px; font-weight: 600; }
+  .artifact-meta { font-size: 11px; color: var(--text-secondary); margin: 4px 0 8px; line-height: 1.5; }
+  .artifact-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mini-btn { font-size: 11px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text-secondary); cursor: pointer; }
+  .mini-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* ===== 弹窗 ===== */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 14px; width: 420px; max-width: 92vw; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+  .modal h3 { font-size: 17px; margin-bottom: 6px; }
+  .modal .desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; }
+  .pkg { display: flex; justify-content: space-between; align-items: center; border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; }
+  .pkg:hover, .pkg.selected { border-color: var(--primary); background: var(--primary-light); }
+  .pkg .amt { font-size: 15px; font-weight: 700; }
+  .pkg .pts { font-size: 12px; color: var(--text-secondary); }
+  .pkg .bonus { font-size: 11px; color: var(--amber); }
+  .guide-step { text-align: center; padding: 6px 0 2px; }
+  .guide-step .gicon { font-size: 42px; margin-bottom: 10px; }
+  .guide-step h4 { font-size: 16px; margin-bottom: 8px; }
+  .guide-step p { font-size: 13px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 14px; }
+  .dots { display: flex; gap: 6px; justify-content: center; margin: 12px 0; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--disabled); }
+  .dot.on { background: var(--primary); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+  /* ===== 冻结页 ===== */
+  .frozen { position: fixed; inset: 0; background: var(--bg); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; }
+  .frozen.show { display: flex; }
+  .frozen .ficon { font-size: 46px; margin-bottom: 14px; }
+  .frozen h2 { font-size: 20px; margin-bottom: 8px; }
+  .frozen p { font-size: 13px; color: var(--text-secondary); margin-bottom: 18px; }
+
+  /* 原型标记 */
+  .proto-flag { position: fixed; bottom: 10px; right: 14px; font-size: 11px; color: var(--disabled); z-index: 300; background: rgba(255,255,255,.85); padding: 3px 10px; border-radius: 12px; }
+</style>
+</head>
+<body>
+
+<!-- ===== 三栏工作台 ===== -->
+<div class="app" id="app">
+  <!-- 左栏 -->
+  <aside class="left">
+    <div class="brand">
+      <div class="logo">◈ Informate</div>
+      <div class="sub">企业级 AI 工作台</div>
+    </div>
+    <div class="left-scroll">
+      <div class="section-label">我的场景</div>
+      <div class="scene-item active" data-scene="assistant" onclick="switchScene(this)">
+        <span class="icon">🏥</span>
+        <div><div class="name">医美行业工作助手</div><div class="preview">写文案 · 问知识 · 合规检查</div></div>
+      </div>
+      <div class="scene-item" data-scene="image" onclick="switchScene(this)">
+        <span class="icon">🖼️</span>
+        <div><div class="name">医美营销生图</div><div class="preview">海报 · 产品图 · 活动视觉</div></div>
+        <span class="badge">异步</span>
+      </div>
+      <div class="section-label" style="margin-top:14px;">未开通</div>
+      <div class="scene-item" style="opacity:.45; cursor:not-allowed;">
+        <span class="icon">🎬</span>
+        <div><div class="name">营销短视频</div></div>
+      </div>
+      <div class="section-label" style="margin-top:14px;">管理</div>
+      <div class="scene-item" onclick="toggleGuide()">
+        <span class="icon">📋</span>
+        <div><div class="name">使用引导</div></div>
+      </div>
+      <div class="scene-item" onclick="alert('员工管理（主账号）——原型示意')">
+        <span class="icon">👥</span>
+        <div><div class="name">员工管理</div></div>
+      </div>
+    </div>
+    <div class="balance-card">
+      <div class="label">积分余额</div>
+      <div class="amount" id="balance">1,100</div>
+      <div class="row">
+        <button class="btn btn-primary" style="flex:1" onclick="openRecharge()">充值</button>
+        <button class="btn btn-ghost" onclick="alert('消费记录：充值 +1100 / 会话 -10 …（原型示意）')">消费记录</button>
+      </div>
+    </div>
+    <div class="help">使用帮助 · 联系运营</div>
+  </aside>
+
+  <!-- 中栏 -->
+  <main class="center">
+    <div class="topbar">
+      <div class="tenant"><b>XX 医美</b> · 医美行业</div>
+      <div class="user-menu" onclick="toggleGuide()">📖 新员工引导</div>
+    </div>
+    <div class="chat-area" id="chatArea">
+      <div class="sys-banner">欢迎使用「医美行业工作助手」· 10 积分/会话（约 20 轮），超量 1 积分/轮</div>
+      <div class="msg ai">
+        <span class="tag">AI</span>
+        您好！我是您的医美行业工作助手 👋<br>
+        我可以帮您：写植发/口腔/皮肤项目的营销文案、整理术前术后注意事项、回答医美知识问题，并自动做合规检查。<br><br>
+        试试对我说：「帮我写一段植发项目朋友圈文案」
+      </div>
+      <div class="msg user">帮我写一段植发项目朋友圈文案</div>
+      <div class="msg ai">
+        <span class="tag">AI</span>
+        好的，为您生成植发项目朋友圈文案：
+        <br><br>
+        📌 <b>关于植发，你可能关心的 3 件事</b><br>
+        ① 植发是医疗行为——请选择持有《医疗机构执业许可证》的正规机构；<br>
+        ② 方案因人而异——建议先到院面诊，由医生评估毛囊情况；<br>
+        ③ 恢复期与效果——术后遵医嘱护理，效果通常在 6-12 个月逐步显现。<br><br>
+        <span style="font-size:11px;color:var(--amber)">⚠️ 合规提示：以上文案需人工审核，取得《医疗广告审查证明》后方可投放（FR-209）</span>
+        <div class="meta">已用 2/20 轮 · 合规检查通过 ✓</div>
+      </div>
+      <div class="msg ai">
+        <span class="tag">AI</span>
+        需要我把这段文案做成配图吗？切到「医美营销生图」场景即可生成海报图，或点击右侧产出物「发送到生图场景」。
+        <div class="meta">已用 3/20 轮</div>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="round-hint" id="roundHint">本轮将消耗 1 积分（第 21 轮起）</div>
+      <div class="input-row">
+        <textarea id="input" placeholder="向医美行业工作助手描述你的需求…（Enter 发送）" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMsg()">发送</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- 右栏 -->
+  <aside class="right">
+    <div class="right-tabs">
+      <div class="tab active" onclick="switchTab(this,0)">当前对话</div>
+      <div class="tab" onclick="switchTab(this,1)">历史产出</div>
+    </div>
+    <div class="artifacts" id="artifacts">
+      <div class="artifact-empty" id="emptyTip">本对话暂无产出物<br><span style="font-size:11px">试试让助手生成图片或清单</span></div>
+      <div class="artifact-card" id="imgCard" style="display:none">
+        <div class="artifact-img" style="background:linear-gradient(135deg,#2E8B74,#1F6E5C 60%,#0E4D3E)">
+          🏥 植发项目·朋友圈配图
+          <span class="ai-flag">AI 生成</span>
+        </div>
+        <div class="artifact-body">
+          <div class="artifact-title">植发项目宣传图</div>
+          <div class="artifact-meta">受众：25-40 岁脱发人群 · 卖点：正规机构/医生面诊<br>风格：专业医疗 · 比例 3:4</div>
+          <div class="artifact-actions">
+            <button class="mini-btn">预览</button>
+            <button class="mini-btn">下载</button>
+            <button class="mini-btn">重新生成</button>
+            <button class="mini-btn">发送到生图场景</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ===== 充值弹窗 ===== -->
+<div class="overlay" id="rechargeModal">
+  <div class="modal">
+    <h3>充值积分</h3>
+    <div class="desc">1 元 = 10 积分 · 到账即时生效 · 积分长期有效</div>
+    <div class="pkg selected" onclick="selectPkg(this,'100 元','1100 积分','+10%')"><span class="amt">¥100</span><span class="pts">到账 1100 积分</span><span class="bonus">赠 10%</span></div>
+    <div class="pkg" onclick="selectPkg(this,'500 元','6000 积分','+20%')"><span class="amt">¥500</span><span class="pts">到账 6000 积分</span><span class="bonus">赠 20%</span></div>
+    <div class="pkg" onclick="selectPkg(this,'2000 元','25000 积分','+25%')"><span class="amt">¥2000</span><span class="pts">到账 25000 积分</span><span class="bonus">赠 25%</span></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('rechargeModal')">取消</button>
+      <button class="btn btn-primary" onclick="alert('支付（对公转账人工确认）→ 到账即时刷新（原型示意）');document.getElementById('balance').textContent='2,200';closeModal('rechargeModal')">确认充值</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 试用引导弹窗 ===== -->
+<div class="overlay show" id="guideModal">
+  <div class="modal">
+    <div class="guide-step" id="guideBody">
+      <div class="gicon">👋</div>
+      <h4>欢迎使用 Informate 工作台</h4>
+      <p>三步上手，15 分钟开始干活：<br>① 选一个场景 → ② 发一条消息 → ③ 右侧看产出物</p>
+      <div class="dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('guideModal')">跳过</button>
+      <button class="btn btn-primary" onclick="nextGuide()">下一步</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 冻结提示页 ===== -->
+<div class="frozen" id="frozenPage">
+  <div class="ficon">❄️</div>
+  <h2>账户已暂停使用</h2>
+  <p>积分余额不足，已暂停新会话。充值后 1 分钟内自动恢复，历史数据保留。</p>
+  <button class="btn btn-primary" onclick="document.getElementById('frozenPage').classList.remove('show')">我知道了</button>
+</div>
+
+<div class="proto-flag">Informate 工作台 · 交互原型 v0.1（非真实数据）</div>
+
+<script>
+  let guideStep = 0;
+  const guideContents = [
+    { icon: '👋', title: '欢迎使用 Informate 工作台', body: '三步上手，15 分钟开始干活：\n① 选一个场景 → ② 发一条消息 → ③ 右侧看产出物' },
+    { icon: '💬', title: '像聊天一样干活', body: '直接在对话框里说需求：写文案、问知识、做图片。\n20 轮内一个任务，超出自动 1 积分/轮。' },
+    { icon: '🖼️', title: '产出物在右侧', body: '图片、清单、文案都在右侧面板：预览 / 下载 / 重新生成 / 发送到其他场景。' }
+  ];
+  function nextGuide(){
+    guideStep++;
+    if(guideStep >= guideContents.length){ closeModal('guideModal'); return; }
+    const c = guideContents[guideStep];
+    document.getElementById('guideBody').innerHTML =
+      `<div class="gicon">${c.icon}</div><h4>${c.title}</h4><p style="white-space:pre-line">${c.body}</p>
+       <div class="dots">${[0,1,2].map(i=>`<span class="dot ${i<=guideStep?'on':''}"></span>`).join('')}</div>`;
+  }
+  function toggleGuide(){ guideStep = 0; document.getElementById('guideBody').innerHTML =
+    `<div class="gicon">👋</div><h4>欢迎使用 Informate 工作台</h4><p>三步上手，15 分钟开始干活：<br>① 选一个场景 → ② 发一条消息 → ③ 右侧看产出物</p>
+     <div class="dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>`;
+    document.getElementById('guideModal').classList.add('show'); }
+  function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+  function openRecharge(){ document.getElementById('rechargeModal').classList.add('show'); }
+  function selectPkg(el, a, p, b){ document.querySelectorAll('.pkg').forEach(x=>x.classList.remove('selected')); el.classList.add('selected'); }
+
+  function switchScene(el){
+    document.querySelectorAll('.scene-item').forEach(x=>x.classList.remove('active'));
+    el.classList.add('active');
+    // 场景切换模拟
+    if(el.dataset.scene === 'image'){
+      document.querySelector('.sys-banner').textContent = '「医美营销生图」· 20 积分/张（实际 15）· 生成约 30-60 秒';
+      document.querySelector('.input-area textarea').placeholder = '描述图片需求：海报主题/风格/比例…';
+    } else {
+      document.querySelector('.sys-banner').textContent = '欢迎使用「医美行业工作助手」· 10 积分/会话（约 20 轮），超量 1 积分/轮';
+      document.querySelector('.input-area textarea').placeholder = '向医美行业工作助手描述你的需求…（Enter 发送）';
+    }
+  }
+  function switchTab(el, idx){
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('imgCard').style.display = idx === 0 ? 'block' : 'none';
+    document.getElementById('emptyTip').style.display = 'none';
+  }
+  let round = 3;
+  function sendMsg(){
+    const input = document.getElementById('input');
+    const txt = input.value.trim(); if(!txt) return;
+    const area = document.getElementById('chatArea');
+    const userMsg = document.createElement('div'); userMsg.className = 'msg user'; userMsg.textContent = txt;
+    area.appendChild(userMsg);
+    input.value = '';
+    round++;
+    setTimeout(() => {
+      const ai = document.createElement('div'); ai.className = 'msg ai';
+      ai.innerHTML = `<span class="tag">AI</span>收到！已根据医美行业知识库为您处理（原型示意）。<div class="meta">已用 ${round}/20 轮 · 合规检查通过 ✓</div>`;
+      area.appendChild(ai); area.scrollTop = area.scrollHeight;
+      if(round >= 20) document.getElementById('roundHint').style.display = 'block';
+      // 模拟产出物（生图场景）
+      if(document.querySelector('.scene-item.active').dataset.scene === 'image'){
+        document.getElementById('emptyTip').style.display = 'none';
+        document.getElementById('imgCard').style.display = 'block';
+      }
+    }, 500);
+    area.scrollTop = area.scrollHeight;
+  }
+</script>
+</body>
+</html>

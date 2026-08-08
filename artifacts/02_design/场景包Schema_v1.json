@@ -1,0 +1,383 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.informate.ai/scenario-package/v1.json",
+  "title": "Informate 场景包 Schema V1",
+  "description": "Informate 场景包（Scenario Package）正式定义 V1。场景包 = 角色定义（人设/使命/规则）+ Hermes profile 运行时配置（模型/工具/skill/工作流/记忆）+ 场景专属参数（积分单价/产出物类型/知识库绑定/合规）。依据：PRD_v1.md（FR-207/FR-301~307/FR-401~405）、项目说明 v3.1（Q24/Q25/Q26/Q28）、M1 内容工厂复用评估（compliance_rules 4 行业包）、Gemini 落地版商品图 profile 示例。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "version",
+    "description",
+    "emoji",
+    "color",
+    "pricing",
+    "runtime",
+    "memory",
+    "knowledge",
+    "workflow",
+    "artifact",
+    "compliance"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{2,63}$",
+      "description": "场景唯一标识（snake_case，全局唯一，跨场景传递 target_scenario 引用此值）"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "description": "场景显示名称（全局通用名，不含行业前缀；行业前缀由部署层按租户一级行业拼接，见 display_name_template）"
+    },
+    "display_name_template": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "部署时展示名模板（可选；含 {industry} 占位符，如 '{industry}行业工作助手'；缺省时直接用 name。按租户一级行业渲染后作为左栏场景名）"
+    },
+    "suggestions": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 40 },
+      "uniqueItems": true,
+      "description": "空态引导建议（可选；前端 Chat 空态展示的可点击示例问题 chips）"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+      "description": "场景包版本号（语义化版本 MAJOR.MINOR.PATCH，可选预发布后缀）；计价/规则变更须升版本并留审计"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500,
+      "description": "场景职责一句话说明（部署审核与场景列表副标题用）"
+    },
+    "emoji": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8,
+      "description": "场景图标 emoji（建议单个 emoji，如 🏥 / 🖼️；ZWJ 组合序列长度上限 8 码位）"
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$",
+      "description": "场景主题色（#RRGGBB，前端场景卡片/高亮色）"
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deduct_points", "actual_points", "refund_on_failure", "unit"],
+      "description": "计费配置（出厂默认值；上线后均为管理后台可配置变量 FR-704，后台改动即时生效，不要求与场景包一致）",
+      "properties": {
+        "deduct_points": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "对外展示价（报价/文案口径，积分/计费单位）"
+        },
+        "actual_points": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "实际扣费价（执行优惠价；业务规则：1 <= actual_points <= deduct_points）"
+        },
+        "refund_on_failure": {
+          "type": "boolean",
+          "description": "失败自动退分：仅生成失败/超时退分（FR-304）；生成成功但效果不满意不退；会话型场景默认为 false（已消耗轮次不退）"
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["session", "image", "video", "file", "task"],
+          "description": "计费单位：session=会话型（按轮计，须配含轮数/超轮单价/轮次上限）；image=张；video=条；file=份；task=任务"
+        },
+        "included_rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "会话含轮数（unit=session 时必填；业务规则：round_limit > included_rounds，如 20 含轮 / 50 上限）"
+        },
+        "extra_round_points": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "超轮单价（积分/轮；unit=session 时必填，如 1 积分/轮）"
+        },
+        "round_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "单会话轮次上限（unit=session 时必填；达上限拦截新消息并引导新开对话，防套利 FR-205）"
+        }
+      },
+      "if": {
+        "properties": { "unit": { "const": "session" } },
+        "required": ["unit"]
+      },
+      "then": {
+        "required": ["included_rounds", "extra_round_points", "round_limit"]
+      },
+      "else": {
+        "properties": {
+          "included_rounds": false,
+          "extra_round_points": false,
+          "round_limit": false
+        },
+        "description": "unit != session 时禁止携带会话型字段"
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "provider"],
+      "description": "Hermes profile 运行时配置（模型/供应商/工具）",
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "模型标识：deepseek-v4-flash（文本）/ seedream-5.0（生图）/ minimax-h3-768p（生视频标准档）/ seedance-2.0-720p（生视频品质档）"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["deepseek", "volcengine", "minimax"],
+          "description": "模型供应商：deepseek=DeepSeek；volcengine=火山方舟（Seedream 生图 / Seedance 生视频）；minimax=MiniMax（H3 生视频）"
+        },
+        "skills": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "uniqueItems": true,
+          "description": "场景可调用的工具/skill 列表（如 seedream_v5_generator / knowledge_retriever / compliance_check）；workflow 中 action=call_skill 的 tool 必须在此声明"
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bank_id_template"],
+      "description": "记忆与知识库绑定（Hindsight bank 体系，三层：通用/行业/租户）",
+      "properties": {
+        "bank_id_template": {
+          "type": "string",
+          "pattern": "^informate-tenant-\\{user\\}-\\{profile\\}$",
+          "description": "租户记忆 bank 命名模板（FR-207 定稿）：informate-tenant-{user}-{profile}。占位符白名单：{user}=租户ID（仅后端可信注入，场景包内禁止写死真实租户ID）；{profile}=场景名。同租户不同场景 bank 隔离（Q3/NFR-06）"
+        },
+        "read_only_banks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^informate-(common|industry_[A-Za-z0-9_\\u4e00-\\u9fa5]+)$"
+          },
+          "uniqueItems": true,
+          "description": "只读 bank 列表（部署时由运营按租户一级行业绑定，Q28）：informate-common=通用层；informate-industry_<一级行业>=行业层（如 informate-industry_医美）。禁止包含 informate-tenant_ 前缀——租户 bank 为读写，由 bank_id_template 定义"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "记忆策略补充说明（可选）"
+        }
+      }
+    },
+    "knowledge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["types"],
+      "description": "行业知识叠加层加载配置（Q28；行业工作助手场景核心，非知识型场景 types 可为空数组）",
+      "properties": {
+        "types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["terms", "faq", "scripts", "sop", "regulations", "cases", "templates"]
+          },
+          "uniqueItems": true,
+          "description": "加载的行业知识类型：terms=术语 / faq=FAQ / scripts=话术 / sop=SOP / regulations=法规库 / cases=案例 / templates=模板（行业 bank 条目 metadata.sub_industry 标记二级行业；v3.1 §5.1 种子知识量级含 20 案例/10 模板）"
+        },
+        "sub_industry": {
+          "type": ["string", "null"],
+          "maxLength": 32,
+          "description": "二级行业过滤（精确匹配条目 metadata.sub_industry，对应检索优先级 P2）；缺省/null=仅一级行业通用条目（P3）+ 通用层（P4）兜底。检索优先级 P1-P4 为部署时硬编码（Q25）：P1 租户私有 bank → P2 行业 bank 中 sub_industry=租户二级行业 → P3 行业 bank 通用条目 → P4 通用 bank"
+        }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "description": "场景工作流描述（工具调用顺序与产出物类型；积分冻结/扣减/解冻由平台积分管线执行 Q20，不出现在本字段）",
+      "properties": {
+        "description": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "工作流一句话描述（人话版，供部署审核/文档）"
+        },
+        "produces": {
+          "type": "string",
+          "enum": ["text", "image", "video", "file"],
+          "description": "本场景最终产出物类型（业务规则：须与 artifact.type 一致）"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["order", "action"],
+            "properties": {
+              "order": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "步骤序号（业务规则：从 1 连续递增、无重复、无跳号）"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "intent_parse",
+                  "memory_load",
+                  "knowledge_retrieve",
+                  "compliance_check",
+                  "call_skill",
+                  "emit_artifact",
+                  "respond"
+                ],
+                "description": "动作类型：intent_parse=意图解析 / memory_load=租户记忆加载 / knowledge_retrieve=分层知识检索 / compliance_check=合规检查 / call_skill=调用工具（须填 tool）/ emit_artifact=产出物入面板 / respond=流式回复"
+              },
+              "tool": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "调用工具/skill 名（action=call_skill 时必填，须在 runtime.skills 声明；业务规则：compliance_check/knowledge_retrieve 步骤的 tool 同理）"
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 300,
+                "description": "步骤说明（可选）"
+              }
+            }
+          }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "产出物 Payload 结构（右栏产出物面板渲染与跨场景传递元数据契约，FR-401~405/Q23）",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["text", "image", "video", "file"],
+          "description": "产出物类型"
+        },
+        "url_template": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "产出物 URL 模板（可选；如 https://cdn.informate.ai/outputs/{year}/{month}/...；文本型产出物可省略）"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "type"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_]*$",
+                    "description": "元数据字段名（snake_case，Payload 键名）"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["string", "number", "boolean", "string_array", "object"],
+                    "description": "字段值类型"
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 300,
+                    "description": "字段语义说明（跨场景传递时目标场景 Agent 的依据）"
+                  },
+                  "required": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "是否必填（Payload 校验用）"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "type"],
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32,
+                "description": "操作按钮文案（如 下载高清图 / 发送到行业工作助手）"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["preview", "download", "copy", "regenerate", "send_to_scenario"],
+                "description": "操作类型：preview=预览 / download=下载 / copy=复制 / regenerate=重新生成（按次计费）/ send_to_scenario=跨场景传递（须填 target_scenario）"
+              },
+              "target_scenario": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "description": "目标场景 id（type=send_to_scenario 时必填；业务规则：目标场景须已部署且租户 active，试用期禁用 FR-404）"
+              }
+            }
+          }
+        }
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "description": "合规配置（Q19；M1 合规引擎代码复用：违禁词引擎 + 行业规则包 + LLM fallback + 自动修正）",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "是否启用合规引擎（医美等行业场景必须 true）"
+        },
+        "rule_packs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["general", "medical", "education", "finance", "food_health"]
+          },
+          "uniqueItems": true,
+          "description": "启用规则包：general=通用违禁词库；medical/education/finance/food_health=M1 data/compliance_rules/ 四行业包（医美场景启用 medical：广告法绝对化用语/医疗广告审查/前后对比禁令/违禁词库）"
+        },
+        "ai_label": {
+          "type": "boolean",
+          "default": true,
+          "description": "AI 生成内容标识（水印或元数据标记，2026 生成式 AI 国标 NFR-01）；标识为永久保留项，不随试用/正式状态变化"
+        },
+        "publish_review_hint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean", "description": "生成营销/对外文案时是否附带发布审查提示（FR-209；医美等受监管行业必须 true）" },
+            "text": { "type": "string", "maxLength": 200, "description": "提示文案（后台可配置变量；缺省默认「需人工审核且取得《医疗广告审查证明》后方可投放」）" }
+          },
+          "description": "文案发布审查提示（FR-209）：行业工作助手生成营销文案时自动附带合规提示，不向客户承诺「生成即可投放」"
+        }
+      },
+      "if": {
+        "properties": { "enabled": { "const": true } },
+        "required": ["enabled"]
+      },
+      "then": {
+        "properties": { "rule_packs": { "minItems": 1 } },
+        "required": ["rule_packs"]
+      }
+    }
+  }
+}

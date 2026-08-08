@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# 运行时配置（PUT /hint 与规则包外挂产生，不入库）
+data/publish_hint.json
+data/compliance_rules/

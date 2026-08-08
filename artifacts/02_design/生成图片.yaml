@@ -1,0 +1,95 @@
+# Informate 场景包实例 · 生成图片 V1
+id: generate_image
+name: 生成图片
+display_name_template: "{industry}营销生图"   # 部署层渲染（零号客户=医美营销生图，UIUX §2.2 对齐 G14）
+version: "1.0.0"
+description: 营销图/海报/产品图生成（Seedream 5.0 异步任务）：Prompt 扩写 + 前置合规检查 + 产出物面板展示与跨场景传递
+emoji: 🖼️
+color: "#FF7F50"
+
+pricing:
+  deduct_points: 20          # 对外展示价：20 积分/张（报价口径，保守档）
+  actual_points: 15          # 实际扣费价：15 积分/张（执行优惠，让利口径）
+  refund_on_failure: true    # 生成失败/超时原子解冻退分（FR-304）；成功但效果不满意不退
+  unit: image                # 按张计费，无会话轮数概念（unit≠session，禁止携带轮数字段）
+
+runtime:
+  model: seedream-5.0
+  provider: volcengine       # 火山方舟（Seedream 生图）
+  skills:
+    - seedream_v5_generator  # JSON 工具契约：prompt/negative_prompt/aspect_ratio/image_resolution/ref_image_url/product_fidelity
+    - compliance_check       # M1 合规引擎（生图前置检查 FR-306；医美部署启用 medical 拦截前后对比/效果承诺图 FR-307）
+
+memory:
+  bank_id_template: "informate-tenant-{user}-{profile}"
+  read_only_banks:
+    - informate-common
+
+knowledge:
+  types: []                  # 非知识型场景：不加载行业知识叠加层
+  sub_industry: null
+
+workflow:
+  description: 用户描述 → 意图解析&租户记忆提取（品牌视觉风格）→ 前置合规检查（违禁/医美限制）→ Prompt 自动扩写 → 提交异步任务（冻结 15 积分）→ webhook 成功扣费 → 产出物入面板；失败原子解冻
+  produces: image
+  steps:
+    - order: 1
+      action: intent_parse
+      note: 识别图片需求（营销图/海报/产品图）+ 提取租户品牌色/主视觉偏好
+    - order: 2
+      action: memory_load
+      note: 读取租户 bank 品牌视觉风格记忆（Hindsight 记忆埋点：满意/好评时写入）
+    - order: 3
+      action: compliance_check
+      tool: compliance_check
+      note: 违禁提示词拦截并说明，不产生扣费（FR-306）
+    - order: 4
+      action: call_skill
+      tool: seedream_v5_generator
+      note: DeepSeek 扩写 Prompt 后提交 Seedream 异步 Job（BullMQ 队列，冻结 15 积分）
+    - order: 5
+      action: emit_artifact
+      note: 图片 + 元数据 Payload 入右栏（预览/下载/重新生成/发送到其他场景）
+
+artifact:
+  type: image
+  url_template: "https://cdn.informate.ai/outputs/{year}/{month}/{artifact_id}.jpg"
+  metadata:
+    fields:
+      - name: prompt
+        type: string
+        description: 扩写后的生成提示词（光影/材质/视角/环境）
+        required: true
+      - name: aspect_ratio
+        type: string
+        description: 比例（1:1/3:4/4:3/16:9/9:16）
+      - name: style_tags
+        type: string_array
+        description: 风格标签（跨场景传递时目标 Agent 的上下文依据，Q23）
+      - name: target_product
+        type: string
+        description: 目标商品/主题
+      - name: audience
+        type: string
+        description: 受众人群（跨场景传递时目标 Agent 的投放依据，PRD AC-403/G4 定稿）
+      - name: selling_points
+        type: string_array
+        description: 产品卖点（跨场景传递时目标 Agent 的文案依据，PRD AC-403/G4 定稿）
+      - name: seedream_params
+        type: object
+        description: 模型参数（product_fidelity/model_version）
+  actions:
+    - label: 预览
+      type: preview
+    - label: 下载高清图
+      type: download
+    - label: 重新生成
+      type: regenerate
+    - label: 发送到行业工作助手
+      type: send_to_scenario
+      target_scenario: industry_work_assistant   # 目标场景 id（须已部署且租户 active）
+
+compliance:
+  enabled: true
+  rule_packs: [general, medical]   # 医美零号客户部署实例启用 medical；其他行业部署时按行业调整（B9）
+  ai_label: true                   # AI 标识（右下角水印/元数据标记，2026 国标，永久保留）

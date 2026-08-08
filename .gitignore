@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/informate.db
+data/informate.db-*
+data/artifacts/
+*.log
+.venv/
+__pycache__/
+.DS_Store
+.hermes/

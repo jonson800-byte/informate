@@ -1,0 +1,93 @@
+gateway/platforms/api_server.py | 48 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 48 insertions(+)
+
+--- Changes ---
+
+gateway/platforms/api_server.py
+  @@ -70,6 +70,15 @@ _api_request_profile: ContextVar[Optional[str]] = ContextVar(
+  +# Tenant/user id injected by the trusted Node.js backend via X-Hermes-User-Id.
+  +# Set by the profile-prefix middleware; consumed by _bind_api_server_session so
+  +# the Hindsight memory bank_id_template "{user}" placeholder resolves per tenant
+  +# (Informate FR-207 / api_server_userid experiment — P0 multi-tenant isolation).
+  +# Empty when the header is absent → backward compatible (no user scoping).
+  +_api_request_user_id: ContextVar[str] = ContextVar(
+  +    "api_server_request_user_id", default=""
+  +)
+  +
+   def _approval_event_choices(*, smart_denied: bool, allow_permanent: bool) -> list[str]:
+       if smart_denied:
+           return ["once", "deny"]
+  @@ -1968,12 +1977,17 @@ class APIServerAdapter(BasePlatformAdapter):
+  +            user_id, uid_err = self._parse_user_id_header(request)
+  +            if uid_err is not None:
+  +                return uid_err
+               token = _api_request_profile.set(profile)
+  +            uid_token = _api_request_user_id.set(user_id)
+               try:
+                   with self._profile_scope(profile):
+                       return await handler(request)
+               finally:
+                   _api_request_profile.reset(token)
+  +                _api_request_user_id.reset(uid_token)
+   
+           return profile_prefix_middleware
+   
+  @@ -2043,6 +2057,35 @@ class APIServerAdapter(BasePlatformAdapter):
+  +    def _parse_user_id_header(
+  +        self, request: "web.Request"
+  +    ) -> tuple[str, Optional["web.Response"]]:
+  +        """Extract and validate the ``X-Hermes-User-Id`` header.
+  +
+  +        The user id is a per-tenant identifier injected by the trusted
+  +        Node.js backend (Informate FR-207). It feeds the Hindsight
+  +        ``bank_id_template`` ``{user}`` placeholder so each tenant gets an
+  +        isolated memory bank. Absent header → empty string (backward
+  +        compatible, no user scoping).
+  +
+  +        Security: mirrors ``_parse_session_key_header`` — reject control
+  +        characters (header injection on the echo path) and cap length.
+  +        """
+  +        raw = request.headers.get("X-Hermes-User-Id", "").strip()
+  +        if not raw:
+  +            return "", None
+  +        if re.search(r"[\r\n\x00]", raw):
+  +            return "", web.json_response(
+  +                {"error": {"message": "Invalid user id", "type": "invalid_request_error"}},
+  +                status=400,
+  +            )
+  +        if len(raw) > 256:
+  +            return "", web.json_response(
+  +                {"error": {"message": "User id too long", "type": "invalid_request_error"}},
+  +                status=400,
+  +            )
+  +        return raw, None
+  +
+       def _parse_session_key_header(
+           self, request: "web.Request"
+       ) -> tuple[Optional[str], Optional["web.Response"]]:
+  @@ -2537,6 +2580,7 @@ class APIServerAdapter(BasePlatformAdapter):
+  +        user_id: str = "",  # Informate tenant isolation (FR-207): from X-Hermes-User-Id
+       ) -> Any:
+           """
+           Create an AIAgent instance using the gateway's runtime config.
+  @@ -2835,6 +2879,7 @@ class APIServerAdapter(BasePlatformAdapter):
+  +            "user_id": user_id,  # Informate tenant isolation (FR-207)
+           }
+           if request_service_tier is not _REQUEST_OPTION_MISSING:
+               agent_kwargs["service_tier"] = request_service_tier
+  @@ -5950,6 +5995,7 @@ class APIServerAdapter(BasePlatformAdapter):
+  +            user_id=_api_request_user_id.get(),  # Informate tenant isolation (FR-207)
+               async_delivery=False,
+               cron_session="",
+           )
+  @@ -6005,6 +6051,7 @@ class APIServerAdapter(BasePlatformAdapter):
+  +        request_user_id = _api_request_user_id.get()  # Informate tenant isolation (FR-207)
+   
+           def _run():
+               from gateway.session_context import clear_session_vars
+  @@ -6031,6 +6078,7 @@ class APIServerAdapter(BasePlatformAdapter):
+  +                        user_id=request_user_id,  # Informate tenant isolation (FR-207)
+                       )
+                       if agent_ref is not None:
+                           agent_ref[0] = agent
+  +48 -0

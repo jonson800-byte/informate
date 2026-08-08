@@ -1,0 +1,84 @@
+# Informate 场景包实例 · 行业工作助手（医美）V1
+id: industry_work_assistant
+name: 行业工作助手
+display_name_template: "{industry}行业工作助手"   # 部署层按租户一级行业渲染（零号客户=医美行业工作助手）
+version: "1.0.0"
+description: 医美行业文本对话底座：按租户一级行业加载医美知识叠加层，多轮对话 + 医美内容合规 + 会话级积分计费
+emoji: 🏥
+color: "#00A0E9"
+
+pricing:
+  deduct_points: 10          # 对外价：10 积分/会话（含 20 轮）
+  actual_points: 10          # 实际扣费价：与对外一致（毛利 60-70%）
+  refund_on_failure: false   # 会话型：已消耗轮次不退；整会话失败走平台兜底解冻
+  unit: session
+  included_rounds: 20        # 含 20 轮
+  extra_round_points: 1      # 超轮 1 积分/轮（第 21 轮起逐轮续扣）
+  round_limit: 50            # 单会话上限 50 轮，达上限拦截并引导新开对话（防套利）
+
+runtime:
+  model: deepseek-v4-flash
+  provider: deepseek
+  skills:
+    - knowledge_retriever    # Hindsight 分层检索 P1→P4（租户私有→二级行业→一级行业→通用）
+    - compliance_check       # M1 合规引擎（general + medical 规则包）
+
+memory:
+  bank_id_template: "informate-tenant-{user}-{profile}"   # {user}=租户ID（仅后端可信注入），{profile}=场景名
+  read_only_banks:
+    - informate-common
+    - informate-industry_医美   # 部署时按租户一级行业绑定（Q28）；只读，仅注入检索
+
+knowledge:
+  types: [terms, faq, scripts, sop, regulations, cases, templates]   # 术语/FAQ/话术/SOP/法规库/案例/模板（v3.1 量级含 20 案例/10 模板，T12 灌入）
+  sub_industry: null            # 部署时由租户二级行业精确匹配（P2）；无条目走 P3/P4 兜底
+
+workflow:
+  description: 用户消息 → 意图解析 → 分层知识检索（P1→P4）→ 租户记忆加载 → 医美合规检查 → 流式回复；文案类产出自动附带《医疗广告审查证明》发布审查提示（FR-209）
+  produces: text
+  steps:
+    - order: 1
+      action: intent_parse
+      note: 识别用户意图（咨询/文案/知识问答）
+    - order: 2
+      action: knowledge_retrieve
+      tool: knowledge_retriever
+      note: 按 P1→P4 硬编码优先级检索行业知识叠加层
+    - order: 3
+      action: memory_load
+      note: 读取 informate-tenant-{user}-{profile} 租户私有记忆
+    - order: 4
+      action: compliance_check
+      tool: compliance_check
+      note: medical 规则包：绝对化用语/医疗广告审查/前后对比禁令/违禁词库
+    - order: 5
+      action: respond
+      note: 流式回复；计轮（20 轮内含，超轮 1 积分/轮）
+    - order: 6
+      action: emit_artifact
+      note: 文本产出物入右栏（复制/下载）
+
+artifact:
+  type: text
+  metadata:
+    fields:
+      - name: content
+        type: string
+        description: 回复正文
+        required: true
+      - name: compliance_passed
+        type: boolean
+        description: 是否通过合规检查（false 表示已自动修正或需人工复核）
+      - name: cited_banks
+        type: string_array
+        description: 命中的知识条目来源 bank 列表
+  actions:
+    - label: 复制
+      type: copy
+    - label: 下载
+      type: download
+
+compliance:
+  enabled: true
+  rule_packs: [general, medical]
+  ai_label: true
