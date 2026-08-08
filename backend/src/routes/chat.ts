@@ -224,14 +224,11 @@ export function registerChatRoutes(app: FastifyInstance, jwtSecret: string, opts
 
         // H1 修复（Codex 批次 C / FR-204）：输出侧合规——AI 生成的营销文案必须过合规引擎
         // （输入侧已查，但模型输出可能含最佳/根治/前后对比等违规表述）
+        // P0 修复（batchE 验收）：此前用 app.inject 打绝对 URL 只路由本地实例（404 → 恒放行），
+        // 改为与输入侧一致的 fetch + COMPLIANCE_BASE_URL 真实外呼
         let outputCheck: { passed: boolean; blocked?: boolean; reason?: string | null; fixed_text?: string | null } | null = null
         try {
-          const checkRes = await app.inject({
-            method: 'POST',
-            url: 'http://127.0.0.1:9100/check',
-            payload: { text: replyText, rule_packs: ['general', 'medical'] },
-          })
-          outputCheck = checkRes.json() as typeof outputCheck
+          outputCheck = await checkCompliance(replyText)
         } catch {
           // 合规服务不可用时 fail-closed（NFR-10）：不结算不落库
           send('error', { code: 'COMPLIANCE_UNAVAILABLE', message: '合规服务不可用，请稍后重试' })

@@ -208,16 +208,27 @@ export function registerImageGenRoutes(
       }
 
       // H2 修复（Codex 批次 C / FR-306/307）：生图前置合规——违禁提示词不入队并解冻（不产生扣费）
+      // P0 修复（batchE 验收）：此前用 app.inject 打绝对 URL 只路由本地实例（404 → 恒放行），
+      // 改为 fetch + COMPLIANCE_BASE_URL 真实外呼，失败 fail-closed 503
       const promptToCheck = request.body?.prompt
       if (promptToCheck) {
         let check: { blocked?: boolean; reason?: string | null } | null = null
         try {
-          const checkRes = await app.inject({
-            method: 'POST',
-            url: 'http://127.0.0.1:9100/check',
-            payload: { image_prompt: promptToCheck, rule_packs: ['general', 'medical'] },
-          })
-          check = checkRes.json() as typeof check
+          const complianceBaseUrl = process.env.COMPLIANCE_BASE_URL ?? 'http://127.0.0.1:9100'
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 5000)
+          try {
+            const res = await fetch(`${complianceBaseUrl}/check`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image_prompt: promptToCheck, rule_packs: ['general', 'medical'] }),
+              signal: controller.signal,
+            })
+            if (!res.ok) throw new Error(`合规服务 HTTP ${res.status}`)
+            check = (await res.json()) as typeof check
+          } finally {
+            clearTimeout(timer)
+          }
         } catch {
           // 合规服务不可用 → fail-closed（NFR-10）
           throw new AppError(503, 'COMPLIANCE_UNAVAILABLE', '合规服务不可用，请稍后重试')

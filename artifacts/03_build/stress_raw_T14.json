@@ -1,0 +1,436 @@
+{
+  "runId": "1786159983231-801843",
+  "startedAt": "2026-08-08T03:33:03.231Z",
+  "balance": {
+    "before": 802,
+    "after": null,
+    "expected": null
+  },
+  "chat": {
+    "rounds": 15,
+    "ok": 15,
+    "firstMs": [
+      848.143375,
+      856.1412919999999,
+      851.8215,
+      861.695917,
+      858.095125,
+      303.197666,
+      339.76858400000015,
+      370.9353329999999,
+      371.85462499999994,
+      375.7931249999999,
+      213.5842909999999,
+      220.96675000000005,
+      291.626041,
+      302.2204590000001,
+      314.49683400000004
+    ],
+    "fullMs": [
+      1163.7198329999999,
+      1171.775083,
+      1164.005208,
+      1174.8343750000001,
+      1171.1429159999998,
+      595.741041,
+      629.3989170000002,
+      667.9946659999998,
+      671.5633330000001,
+      678.4002919999998,
+      509.0877909999997,
+      513.5117500000001,
+      600.1444580000002,
+      615.7664589999999,
+      619.195584
+    ],
+    "errors": [],
+    "statusCounts": {
+      "200": 20
+    },
+    "chatRatePct": 100,
+    "p50": {
+      "first": 370.9,
+      "full": 668
+    },
+    "p95": {
+      "first": 861.7,
+      "full": 1174.8
+    },
+    "p90": {
+      "first": 858.1,
+      "full": 1171.8
+    },
+    "max": {
+      "first": 861.7,
+      "full": 1174.8
+    }
+  },
+  "image": {
+    "tasks": 10,
+    "ok": 10,
+    "doneMs": [
+      2840.5607079999995,
+      2842.0051670000003,
+      4864.5545,
+      5671.724917000001,
+      6076.4198750000005,
+      6885.975625000001,
+      7688.812416999999,
+      8501.089,
+      10520.0095,
+      11322.9575
+    ],
+    "freezes": [
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      15
+    ],
+    "errors": [],
+    "statusCounts": {
+      "200": 10
+    },
+    "imageRatePct": 100,
+    "p95": 11323,
+    "p90": 10520,
+    "p50": 6076.4,
+    "max": 11323
+  },
+  "billing": {
+    "sessionCreateMs": [
+      3.5502089999999953,
+      4.408750000000012,
+      7.138165999999998,
+      8.57312499999999,
+      12.700833999999986,
+      1.76183299999866,
+      0.9115419999998267,
+      0.9380000000001019
+    ],
+    "roundSettleMs": [
+      1.2862500000010186,
+      0.9974999999994907,
+      0.7352090000003955,
+      0.8002080000005662
+    ],
+    "imageFreezeMs": [
+      5.468999999999596,
+      6.273666000000048,
+      6.855375000000095,
+      7.478250000000116,
+      8.074875000000247,
+      8.684374999999818,
+      14.787459000000126,
+      19.51608299999998,
+      20.697250000000167,
+      22.879791999999725
+    ],
+    "sessionFreeze10": {
+      "pass": true,
+      "rows": [
+        {
+          "id": "stress-chat-1786159983231-801843-0",
+          "billing_state": "frozen",
+          "turns": 3,
+          "frozen_credit": 10,
+          "settled_credit": 0
+        },
+        {
+          "id": "stress-chat-1786159983231-801843-1",
+          "billing_state": "frozen",
+          "turns": 3,
+          "frozen_credit": 10,
+          "settled_credit": 0
+        },
+        {
+          "id": "stress-chat-1786159983231-801843-2",
+          "billing_state": "frozen",
+          "turns": 3,
+          "frozen_credit": 10,
+          "settled_credit": 0
+        },
+        {
+          "id": "stress-chat-1786159983231-801843-3",
+          "billing_state": "frozen",
+          "turns": 3,
+          "frozen_credit": 10,
+          "settled_credit": 0
+        },
+        {
+          "id": "stress-chat-1786159983231-801843-4",
+          "billing_state": "frozen",
+          "turns": 3,
+          "frozen_credit": 10,
+          "settled_credit": 0
+        }
+      ]
+    },
+    "overRound1": {
+      "pass": true,
+      "createStatus": 200,
+      "charge": 1,
+      "replayCharge": 0,
+      "replayReplayed": true,
+      "row": {
+        "turns": 21,
+        "settled_credit": 1,
+        "billing_state": "frozen"
+      }
+    },
+    "round20Free": {
+      "pass": true,
+      "createStatus": 200,
+      "status": 200,
+      "charge": 0,
+      "message": "第 20 轮计入会话基础包（含 20 轮）",
+      "row": {
+        "turns": 20,
+        "settled_credit": 0,
+        "billing_state": "frozen"
+      }
+    },
+    "round51Limit": {
+      "pass": true,
+      "createStatus": 200,
+      "status": 429,
+      "code": "ROUND_LIMIT_EXCEEDED",
+      "txnCount": 1,
+      "row": {
+        "turns": 50,
+        "settled_credit": 0,
+        "billing_state": "frozen"
+      }
+    },
+    "imageFreeze15": {
+      "pass": true,
+      "txns": [
+        {
+          "ref_id": "stress-img-1786159983231-801843-0",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-0",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-1",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-1",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-2",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-2",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-3",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-3",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-4",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-4",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-5",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-5",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-6",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-6",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-7",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-7",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-8",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-8",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-9",
+          "type": "freeze",
+          "amount": 15,
+          "c": 1
+        },
+        {
+          "ref_id": "stress-img-1786159983231-801843-9",
+          "type": "settle",
+          "amount": 15,
+          "c": 1
+        }
+      ],
+      "artifacts": [
+        {
+          "id": "stress-img-1786159983231-801843-0",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-0/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:16"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-1",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-1/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:11"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-2",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-2/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:08"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-3",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-3/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:08"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-4",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-4/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:10"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-5",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-5/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:12"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-6",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-6/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:11"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-7",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-7/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:13"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-8",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-8/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:14"
+        },
+        {
+          "id": "stress-img-1786159983231-801843-9",
+          "status": "success",
+          "url": "/api/v1/artifacts/stress-img-1786159983231-801843-9/download",
+          "created_at": "2026-08-08 03:33:06",
+          "completed_at": "2026-08-08 03:33:17"
+        }
+      ]
+    },
+    "balance": {
+      "before": 802,
+      "after": 571,
+      "expected": 571,
+      "pass": true
+    },
+    "latency": {
+      "sessionCreate": {
+        "n": 8,
+        "p50": 3.6,
+        "p95": 12.7,
+        "max": 12.7
+      },
+      "roundSettle": {
+        "n": 4,
+        "p50": 0.8,
+        "p95": 1.3,
+        "max": 1.3
+      },
+      "imageFreeze": {
+        "n": 10,
+        "p50": 8.1,
+        "p95": 22.9,
+        "max": 22.9
+      }
+    }
+  },
+  "finishedAt": "2026-08-08T03:33:17.388Z",
+  "totalMs": 14157
+}
