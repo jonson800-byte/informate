@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { AdminTenant } from '../../api/types'
 import { ExportButton } from './shared'
+import NewTenantModal from './NewTenantModal'
 
 const STATUS_LABEL: Record<string, string> = {
   trial: '试用',
@@ -19,6 +20,7 @@ export default function Tenants(): React.JSX.Element {
   const [status, setStatus] = useState('')
   const [industry, setIndustry] = useState('')
   const [loading, setLoading] = useState(true)
+  const [createOpen, setCreateOpen] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -38,6 +40,7 @@ export default function Tenants(): React.JSX.Element {
       <h2>租户管理</h2>
       <p className="admin-subtitle">数据来自 GET /api/v1/admin/tenants（FR-70 段，admin 专属）</p>
       <div className="filter-bar">
+        <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>＋ 新建租户</button>
         <select className="input" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }}>
           <option value="">全部状态</option>
           <option value="trial">试用</option>
@@ -53,6 +56,15 @@ export default function Tenants(): React.JSX.Element {
         />
         <ExportButton label="导出租户积分流水" />
       </div>
+      {createOpen && (
+        <NewTenantModal
+          onClose={() => setCreateOpen(false)}
+          onSuccess={() => {
+            setCreateOpen(false)
+            setPage(1)
+          }}
+        />
+      )}
       <div className="table-wrap">
         <table className="data-table">
           <thead>

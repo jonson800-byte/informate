@@ -18,6 +18,7 @@ import type {
   PriceConfigResponse,
   PriceConfigUpdateResponse,
   RechargeResponse,
+  RegisterResponse,
   RoundSettleResponse,
   ScenariosResponse,
   SseEvent,
@@ -206,6 +207,19 @@ export const api = {
     }),
 
   // ---------- 管理后台（admin） ----------
+  /** 开户（T4：租户+主账号创建，admin/owner 均可调用；FR-101） */
+  register: (body: {
+    name: string
+    industry: string
+    sub_industry?: string
+    owner_account: string
+    owner_password: string
+    owner_name?: string
+    contact_name?: string
+    contact_phone?: string
+  }) =>
+    request<RegisterResponse>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(body) }),
+
   adminTenants: (params: { status?: string; industry?: string; page?: number; pageSize?: number } = {}) => {
     const qs = new URLSearchParams()
     if (params.status) qs.set('status', params.status)

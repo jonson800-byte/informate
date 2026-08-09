@@ -55,6 +55,12 @@ export interface LoginResponse {
   tenant: TenantInfo | null
 }
 
+export interface RegisterResponse {
+  token: string
+  user: { id: string; role: 'owner'; name: string }
+  tenant: { id: string; name: string; industry: string; status: string; balance: number; trial_remaining: number }
+}
+
 export interface MeResponse {
   user: UserInfo
   tenant: TenantInfo | null
