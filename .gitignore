@@ -8,3 +8,4 @@ data/artifacts/
 __pycache__/
 .DS_Store
 .hermes/
+data/informate.db.bak-chain
