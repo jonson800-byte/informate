@@ -68,7 +68,8 @@ function Router(): React.JSX.Element {
   }
 
   // 登录后按角色分流；未登录访问受保护页 → 登录页
-  if (route === '/admin') {
+  // 注意：管理后台子路由为 #/admin/{key}，需用 startsWith（否则点击导航被 RedirectToAdmin 弹回）
+  if (route.startsWith('/admin')) {
     if (user.role !== 'admin') return <RedirectToLogin />
     return <AdminLayout />
   }
