@@ -8,8 +8,8 @@ emoji: 🏥
 color: "#00A0E9"
 
 pricing:
-  deduct_points: 10          # 对外价：10 积分/会话（含 20 轮）
-  actual_points: 10          # 实际扣费价：与对外一致（毛利 60-70%）
+  deduct_points: 15          # 对外价：10 积分/会话（含 20 轮）
+  actual_points: 15          # 实际扣费价：与对外一致（毛利 60-70%）
   refund_on_failure: false   # 会话型：已消耗轮次不退；整会话失败走平台兜底解冻
   unit: session
   included_rounds: 20        # 含 20 轮

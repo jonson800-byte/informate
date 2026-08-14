@@ -41,11 +41,11 @@ export interface TxnRow {
 
 /** 默认价格常量（FR-704：管理后台 price_config 可覆盖，未配置时回落常量） */
 export const DEFAULT_PRICES = {
-  session: 10,        // 会话基础冻结额（含 20 轮）
+  session: 15,        // 会话基础冻结额（含 20 轮，2026-08-17 DeepSeek 涨价后定稿）
   roundExtra: 1,      // 超轮单价（第 21 轮起 1 积分/轮）
   roundLimit: 50,     // 单会话轮次上限（第 51 轮拦截）
   image: 15,          // 生图冻结/执行价（对外展示 20，实际执行 15，M-13 口径）
-  minFreeze: 10,      // 最低冻结额（欠费冻结判定阈值，FR-605）
+  minFreeze: 15,      // 最低冻结额（欠费冻结判定阈值 = 场景最小价，FR-605）
   recharge: { 100: 1100, 500: 6000, 2000: 25000 } as Record<number, number>, // AC-601 阶梯
 }
 

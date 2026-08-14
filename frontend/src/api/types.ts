@@ -331,7 +331,7 @@ export const PRICE_KEYS = {
 
 /** 默认价格常量（对齐 backend DEFAULT_PRICES） */
 export const DEFAULT_PRICES = {
-  session: 10,
+  session: 15,
   roundExtra: 1,
   roundLimit: 50,
   image: 15,

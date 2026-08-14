@@ -18,7 +18,7 @@ const PACKAGE_IWA = {
   id: 'industry_work_assistant', name: '行业工作助手',
   display_name_template: '{industry}行业工作助手', version: '1.0.0',
   description: '行业文本对话底座', emoji: '🏥', color: '#00A0E9',
-  pricing: { deduct_points: 10, actual_points: 10, refund_on_failure: false, unit: 'session', included_rounds: 20, extra_round_points: 1, round_limit: 50 },
+  pricing: { deduct_points: 15, actual_points: 15, refund_on_failure: false, unit: 'session', included_rounds: 20, extra_round_points: 1, round_limit: 50 },
   runtime: { model: 'deepseek-v4-flash', provider: 'deepseek', skills: ['knowledge_retriever', 'compliance_check'] },
   memory: { bank_id_template: 'informate-tenant-{user}-{profile}', read_only_banks: ['informate-common'] },
   knowledge: { types: ['terms', 'faq'], sub_industry: null },
@@ -252,7 +252,7 @@ test('部署：POST /scenarios/deploy 行业工作助手 → 201，display_name=
   assert.equal(body.deployment.status, 'active')
   assert.equal(body.deployment.scenario_version, '1.0.0')
   assert.equal(body.deployment.pricing.unit, 'session') // pricing.unit 区分计费单位
-  assert.equal(body.deployment.pricing.deduct_points, 10)
+  assert.equal(body.deployment.pricing.deduct_points, 15)
   // FR-107：首单免部署费
   assert.equal(body.deploy_fee.waived, true)
   assert.equal(body.deploy_fee.points, 0)

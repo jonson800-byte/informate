@@ -94,11 +94,11 @@ function seed(app) {
                 VALUES (?, ?, ?, ?, ?, ?)`)
       .run('d-001', 't-001', 'industry-worker', '1.0.0', '行业工作助手', 'active')
     const prices = [
-      ['credit.work_assistant.session', '10'],
+      ['credit.work_assistant.session', '15'],
       ['credit.image_task', '15'],
       ['credit.round_extra', '1'],
       ['credit.round_limit', '50'],
-      ['credit.min_freeze', '10'],
+      ['credit.min_freeze', '15'],
     ]
     prices.forEach(([key, value], i) => {
       db.prepare(`INSERT OR IGNORE INTO price_config (id, key, value, effective_at, operator, note) VALUES (?, ?, ?, ?, ?, ?)`)
@@ -126,7 +126,7 @@ function inject(method, url, token, payload) {
   return app.inject({ method, url, headers, payload })
 }
 
-/** 创建会话（走 credit 接口，冻结 10） */
+/** 创建会话（走 credit 接口，冻结 15） */
 async function createConv(token, conversationId) {
   const res = await inject('POST', '/api/v1/credit/conversations', token, {
     conversation_id: conversationId, scenario_id: 'industry-worker',
@@ -290,9 +290,9 @@ test('T6.2 发消息：SSE 流式回复（delta/round_complete）+ AI 回复落�
   assert.equal(hist.statusCode, 200)
   assert.equal(hist.json().messages.length, 2)
 
-  // 余额：500 - 10（会话冻结）= 490
+  // 余额：500 - 15（会话冻结）= 485
   const bal = await inject('GET', '/api/v1/credit/balance', ownerToken)
-  assert.equal(bal.json().balance, 490)
+  assert.equal(bal.json().balance, 485)
 })
 
 // ---------- 3. 第 20 轮末提示 + 第 21 轮起扣 1 积分 ----------
@@ -311,7 +311,7 @@ test('T6.3 轮次计费：第 20 轮末提示含轮用满，第 21 轮扣 1 积�
   assert.equal(rc.turns, 20)
   assert.equal(rc.credit_charged, 0)
   let bal = await inject('GET', '/api/v1/credit/balance', ownerToken)
-  assert.equal(bal.json().balance, 490, '20 轮内不追加扣费')
+  assert.equal(bal.json().balance, 485, '20 轮内不追加扣费')
 
   // 第 21 轮：超轮续扣 1 积分
   res = await sendMessage(ownerToken, 'conv-t6-1', '第 21 轮')
@@ -323,9 +323,9 @@ test('T6.3 轮次计费：第 20 轮末提示含轮用满，第 21 轮扣 1 积�
   assert.equal(rc.turns, 21)
   assert.equal(rc.credit_charged, 1, '第 21 轮应扣 1 积分')
 
-  // 余额：490 - 1 = 489
+  // 余额：485 - 1 = 484
   bal = await inject('GET', '/api/v1/credit/balance', ownerToken)
-  assert.equal(bal.json().balance, 489)
+  assert.equal(bal.json().balance, 484)
 
   // 轮次结算流水：freeze + settle（round_no=21）
   const settle = app.db.prepare(
@@ -348,7 +348,7 @@ test('T6.3 轮次计费：第 20 轮末提示含轮用满，第 21 轮扣 1 积�
 // ---------- 4. 第 51 轮拦截 → 429 ----------
 test('T6.4 第 51 轮拦截：turns>=50 → 429，不扣费，提示新开对话', async () => {
   await createConv(ownerToken, 'conv-t6-51')
-  // 489 - 10 = 479
+  // 484 - 15 = 469（新会话冻结）
   app.db.prepare(`UPDATE conversation SET turns = 50 WHERE id = 'conv-t6-51'`).run()
 
   const res = await sendMessage(ownerToken, 'conv-t6-51', '第 51 轮')
@@ -364,7 +364,7 @@ test('T6.4 第 51 轮拦截：turns>=50 → 429，不扣费，提示新开对话
   const conv = app.db.prepare('SELECT turns FROM conversation WHERE id = ?').get('conv-t6-51')
   assert.equal(conv.turns, 50)
   const bal = await inject('GET', '/api/v1/credit/balance', ownerToken)
-  assert.equal(bal.json().balance, 479)
+  assert.equal(bal.json().balance, 469)
 })
 
 // ---------- 5. 合规违规拦截 → 400 ----------
@@ -385,7 +385,7 @@ test('T6.5 合规违规拦截：blocked → 400，不生成不落库不扣费', 
     const conv = app.db.prepare('SELECT turns FROM conversation WHERE id = ?').get('conv-t6-1')
     assert.equal(conv.turns, 21)
     const bal = await inject('GET', '/api/v1/credit/balance', ownerToken)
-    assert.equal(bal.json().balance, 479, '拦截不应扣费')
+    assert.equal(bal.json().balance, 469, '拦截不应扣费')
   } finally {
     complianceMode = 'pass'
   }
@@ -396,7 +396,7 @@ test('T6.6 记忆链路：recall 注入（租户/行业 bank）+ writeMemory 异
   const before = memoryServer.records.length
   const res = await sendMessage(ownerToken, 'conv-t6-1', '植发术后多久可以洗头')
   assert.equal(res.statusCode, 200, res.body)
-  // 第 22 轮：479 - 1 = 478
+  // 第 22 轮：469 - 1 = 468
   const rc = JSON.parse(parseSSE(res.body).find((e) => e.event === 'round_complete').data)
   assert.equal(rc.turns, 22)
   assert.equal(rc.credit_charged, 1)
@@ -425,7 +425,7 @@ test('T6.6 记忆链路：recall 注入（租户/行业 bank）+ writeMemory 异
   assert.ok(write.body.items[0].content.includes('植发术后多久可以洗头'), '记忆内容应为用户消息')
   assert.ok(write.body.items[0].tags.includes('chat'), '记忆 tags 应含场景标记')
 
-  // 余额校验：第 22 轮续扣 1 积分 → 478
+  // 余额校验：第 22 轮续扣 1 积分 → 468
   const bal = await inject('GET', '/api/v1/credit/balance', ownerToken)
-  assert.equal(bal.json().balance, 478)
+  assert.equal(bal.json().balance, 468)
 })

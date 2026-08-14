@@ -40,7 +40,7 @@ function seed(app) {
       .run('d-001', 't-001', 'industry-worker', '1.0.0', '行业工作助手', 'active')
 
     db.prepare(`INSERT INTO price_config (id, key, value, operator, note) VALUES (?, ?, ?, ?, ?)`)
-      .run('p-001', 'credit.work_assistant.session', '10', 'seed', '会话含20轮单价')
+      .run('p-001', 'credit.work_assistant.session', '15', 'seed', '会话含20轮单价')
   })
   t()
 }
@@ -125,7 +125,7 @@ test('owner 登录 → 200 token；/auth/me 与 /workspace 均 200 且注入租�
   const wsBody = ws.json().workspace
   assert.equal(wsBody.scenarios.length, 1)
   assert.equal(wsBody.scenarios[0].display_name, '行业工作助手')
-  assert.equal(wsBody.prices['credit.work_assistant.session'], '10')
+  assert.equal(wsBody.prices['credit.work_assistant.session'], '15')
 })
 
 test('错误密码 → 401', async () => {
