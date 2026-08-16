@@ -487,3 +487,54 @@ test('T5.10 管理后台：overview 看板 / adjust 调账 / export CSV / price-
   const audit = app.db.prepare(`SELECT COUNT(*) AS c FROM audit_log WHERE action='credit.adjust'`).get()
   assert.ok(audit.c >= 1, '调账应有审计日志')
 })
+
+// ---------- 11. 结束会话（P0-4 显式终态闭环） ----------
+test('T5.11 结束会话：未使用会话全额解冻 + 幂等 + 审计', async () => {
+  const beforeBal = (await inject('GET', '/api/v1/credit/balance', ownerToken)).json().balance
+  await inject('POST', '/api/v1/credit/conversations', ownerToken, { conversation_id: 'conv-end-1' })
+  const afterFreeze = (await inject('GET', '/api/v1/credit/balance', ownerToken)).json().balance
+  assert.equal(afterFreeze, beforeBal - 15, '创建会话应冻结 15')
+
+  const res = await inject('POST', '/api/v1/credit/conversations/conv-end-1/end', ownerToken, {})
+  assert.equal(res.statusCode, 200, res.body)
+  const body = res.json()
+  assert.equal(body.status, 'completed')
+  assert.equal(body.billing_state, 'settled')
+  assert.equal(body.refunded, 15, '未使用会话应全额解冻')
+  assert.equal(body.balance, beforeBal, '解冻后余额回到创建前')
+  assert.equal(body.replayed, false)
+
+  // 幂等：再次 end 不重复结算/解冻
+  const again = await inject('POST', '/api/v1/credit/conversations/conv-end-1/end', ownerToken, {})
+  assert.equal(again.statusCode, 200, again.body)
+  assert.equal(again.json().replayed, true)
+  assert.equal(again.json().refunded, 0, '幂等重放不应重复解冻')
+  assert.equal((await inject('GET', '/api/v1/credit/balance', ownerToken)).json().balance, beforeBal)
+
+  // 审计留痕
+  const audits = app.db.prepare("SELECT action FROM audit_log WHERE object_id = 'conv-end-1'").all()
+  assert.ok(audits.some((a) => a.action === 'conversation_end'), '应有结束会话审计')
+})
+
+test('T5.12 结束会话：已使用会话按轮数结算（不重复扣费）', async () => {
+  const beforeBal = (await inject('GET', '/api/v1/credit/balance', ownerToken)).json().balance
+  await inject('POST', '/api/v1/credit/conversations', ownerToken, { conversation_id: 'conv-end-2' })
+  // 快进 20 轮（含轮内不扣费）
+  for (let r = 1; r <= 20; r++) {
+    const rr = await inject('POST', '/api/v1/credit/conversations/conv-end-2/rounds', ownerToken, {})
+    assert.equal(rr.statusCode, 200, rr.body)
+  }
+  const after20 = (await inject('GET', '/api/v1/credit/balance', ownerToken)).json().balance
+  assert.equal(after20, beforeBal - 15, '20 轮内仅冻结 base 15')
+
+  const res = await inject('POST', '/api/v1/credit/conversations/conv-end-2/end', ownerToken, {})
+  assert.equal(res.statusCode, 200, res.body)
+  const body = res.json()
+  assert.equal(body.status, 'completed')
+  assert.equal(body.refunded, 0, '已使用会话不退还 base')
+  assert.equal(body.balance, after20, '结算不改变余额（冻结时已扣）')
+
+  // 结束后的会话不能再计费/发消息
+  const round = await inject('POST', '/api/v1/credit/conversations/conv-end-2/rounds', ownerToken, {})
+  assert.equal(round.statusCode, 409, '已结束会话不可继续计费')
+})

@@ -261,7 +261,54 @@ export function registerCreditRoutes(app: FastifyInstance, jwtSecret: string): v
     },
   )
 
-  // ---------- 生图任务冻结 15（unit=image，不冻会话费） ----------
+  // ---------- 结束会话（显式终态闭环，P0-4 外部评估优化） ----------
+  // 语义：active → completed；未使用会话全额解冻，已使用按实际轮数结算（settleConversation 幂等）
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/credit/conversations/:id/end',
+    {
+      preHandler: [authenticate(jwtSecret), tenantGuard],
+    },
+    async (request, reply) => {
+      const tenantId = request.tenantId as string
+      const userId = request.userId as string
+      const convId = request.params.id
+
+      const conv = db.prepare('SELECT * FROM conversation WHERE id = ?').get(convId) as
+        | (Record<string, unknown> & {
+            tenant_id: string; status: string; turns: number; settled_credit: number
+          })
+        | undefined
+      if (!conv) throw Errors.notFound('会话不存在')
+      if (conv.tenant_id !== tenantId) throw Errors.forbidden('无权操作该会话')
+
+      // 已结束 → 幂等返回（不重复结算/解冻）
+      if (conv.status !== 'active') {
+        return reply.send({
+          conversation_id: convId, status: conv.status, billing_state: 'settled',
+          turns: conv.turns, settled_credit: conv.settled_credit,
+          refunded: 0, balance: credit.getBalance(tenantId), replayed: true,
+        })
+      }
+
+      // 结束：按实际轮数结算（未使用全额解冻）
+      const r = credit.settleConversation(convId)
+      db.prepare(
+        `INSERT INTO audit_log (tenant_id, user_id, action, object_type, object_id, detail, ip) VALUES (?, ?, 'conversation_end', 'conversation', ?, ?, ?)`,
+      ).run(
+        tenantId, userId, convId,
+        `结束会话：${conv.turns} 轮，结算 ${r.settled} 积分，解冻 ${r.refunded} 积分`,
+        (request.headers['x-forwarded-for'] as string) ?? request.ip,
+      )
+
+      return reply.send({
+        conversation_id: convId, status: 'completed', billing_state: 'settled',
+        turns: conv.turns, settled_credit: conv.settled_credit,
+        refunded: r.refunded, balance: r.balance, replayed: false,
+      })
+    },
+  )
+
+// ---------- 生图任务冻结 15（unit=image，不冻会话费） ----------
   app.post<{ Body: { task_id?: string; scenario_id?: string; idempotency_key?: string } }>(
     '/api/v1/credit/image-tasks',
     {

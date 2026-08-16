@@ -429,3 +429,14 @@ test('T6.6 记忆链路：recall 注入（租户/行业 bank）+ writeMemory 异
   const bal = await inject('GET', '/api/v1/credit/balance', ownerToken)
   assert.equal(bal.json().balance, 468)
 })
+
+// ---------- 7. 已结束会话禁发消息（P0-4 显式终态闭环） ----------
+test('T6.7 已结束会话发消息 → 400 CONVERSATION_CLOSED', async () => {
+  await createConv(ownerToken, 'conv-closed')
+  const end = await inject('POST', '/api/v1/credit/conversations/conv-closed/end', ownerToken, {})
+  assert.equal(end.statusCode, 200, end.body)
+
+  const res = await sendMessage(ownerToken, 'conv-closed', '还能继续问吗')
+  assert.equal(res.statusCode, 409, '已结束会话发消息应 409')
+  assert.ok(res.json().message.includes('新开对话'))
+})

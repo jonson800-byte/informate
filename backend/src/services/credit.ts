@@ -79,6 +79,7 @@ export interface CreditService {
     scenarioId?: string | null
     idempotencyKey?: string
     note?: string
+    roundNo?: number | null
   }): { txn: TxnRow; balance: number; replayed: boolean }
   /** 结算：把已冻结的积分正式扣减（余额不变，因冻结时已扣）；含超轮增量结算 */
   settle(params: {
@@ -376,7 +377,7 @@ export function createCreditService(db: Database.Database): CreditService {
             tenantId: conv.tenant_id, refType: 'conversation', refId: conversationId,
             note: '会话未使用，全额解冻',
           })
-          db.prepare(`UPDATE conversation SET billing_state = 'settled', ended_at = ${nowSql} WHERE id = ?`).run(conversationId)
+          db.prepare(`UPDATE conversation SET billing_state = 'settled', status = 'completed', ended_at = ${nowSql} WHERE id = ?`).run(conversationId)
           return { settled: 0, refunded: released.refunded, balance: released.balance }
         }
 
