@@ -24,6 +24,8 @@ export interface HermesClientOptions {
   streamDelayMs?: number
   /** mock 模式：每块字符数（默认 12） */
   chunkSize?: number
+  /** mock 模式：自定义回复文本（测试注入违禁词等场景用；缺省用 buildMockReply） */
+  mockReply?: string
 }
 
 export interface HermesStreamParams {
@@ -128,7 +130,7 @@ export function createHermesClient(opts: HermesClientOptions = {}): HermesClient
   return {
     async *streamChat({ messages, signal }) {
       const lastUser = [...messages].reverse().find((m) => m.role === 'user')
-      const reply = buildMockReply(lastUser?.content ?? '')
+      const reply = opts.mockReply ?? buildMockReply(lastUser?.content ?? '')
       for (const chunk of chunkText(reply, chunkSize)) {
         if (signal?.aborted) throw new Error('生成已中止（客户端断开）')
         yield chunk

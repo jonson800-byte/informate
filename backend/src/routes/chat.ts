@@ -216,16 +216,61 @@ export function registerChatRoutes(app: FastifyInstance, jwtSecret: string, opts
       request.raw.on('error', swallow)
 
       let replyText = ''
+      // P0-2 分段闸门（外部评估优化，2026-08-16）：
+      // 流式输出改为「服务端按句缓冲 → 增量合规 → 通过才转发」，
+      // 保证被 blocked 的文本块【绝不】到达浏览器（医疗广告违规展示即风险）。
+      // 流结束后仍保留完整回复终检（控制落库/结算；已展示块均为闸门通过）。
+      const SENTENCE_END = /[。！？；!?;\n]/
+      const MAX_BUFFER = 60 // 无句末标点时按长度强制切块（敏感词跨块由终检兜底）
+      let chunkBuffer = ''
+      let gateOpen = true
+
+      /** 刷新缓冲块：合规通过 → 转发；blocked/不可用 → 发 error 并关闭闸门 */
+      const flushChunk = async (): Promise<boolean> => {
+        if (!chunkBuffer) return true
+        const block = chunkBuffer
+        chunkBuffer = ''
+        let check: { passed: boolean; blocked?: boolean; reason?: string | null; fixed_text?: string | null } | null = null
+        try {
+          check = await checkCompliance(block)
+        } catch {
+          // 合规服务不可用时 fail-closed（NFR-10）：停止转发、不结算不落库
+          send('error', { code: 'COMPLIANCE_UNAVAILABLE', message: '合规服务不可用，请稍后重试' })
+          return false
+        }
+        if (check && check.blocked) {
+          send('error', {
+            code: 'COMPLIANCE_BLOCKED_OUTPUT',
+            message: `回复未通过医美合规检查：${check.reason ?? '命中医美红线（医疗广告审查）'}。已不扣费，请修改提问重试`,
+          })
+          return false
+        }
+        send('delta', { text: check?.fixed_text && check.fixed_text !== block ? check.fixed_text : block })
+        return true
+      }
+
       try {
         for await (const chunk of hermesClient.streamChat({ messages, userId, sessionId: convId, signal: ac.signal })) {
           replyText += chunk
-          send('delta', { text: chunk })
+          chunkBuffer += chunk
+          // 句末标点或缓冲达阈值 → 切块过闸
+          if (SENTENCE_END.test(chunkBuffer) || chunkBuffer.length >= MAX_BUFFER) {
+            if (!(await flushChunk())) {
+              gateOpen = false
+              ac.abort() // 停止上游生成
+              break
+            }
+          }
         }
+        // 流结束后：清空剩余缓冲（最后一块过闸）
+        if (gateOpen && chunkBuffer) {
+          if (!(await flushChunk())) gateOpen = false
+        }
+        // 闸门关闭（已发 COMPLIANCE_BLOCKED/COMPLIANCE_UNAVAILABLE）→ 不再落库/结算
+        if (!gateOpen) return
 
-        // H1 修复（Codex 批次 C / FR-204）：输出侧合规——AI 生成的营销文案必须过合规引擎
-        // （输入侧已查，但模型输出可能含最佳/根治/前后对比等违规表述）
-        // P0 修复（batchE 验收）：此前用 app.inject 打绝对 URL 只路由本地实例（404 → 恒放行），
-        // 改为与输入侧一致的 fetch + COMPLIANCE_BASE_URL 真实外呼
+        // H1 修复（Codex 批次 C / FR-204）+ P0 修复（batchE 验收）：输出侧终检——完整回复再过合规引擎
+        // 分段闸门已保证展示安全；终检控制落库/结算（含跨块敏感词、修正文本一致性）
         let outputCheck: { passed: boolean; blocked?: boolean; reason?: string | null; fixed_text?: string | null } | null = null
         try {
           outputCheck = await checkCompliance(replyText)
