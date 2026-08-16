@@ -319,4 +319,42 @@ export function registerImageGenRoutes(
     reply.header('Content-Disposition', `inline; filename="${fileName}"`)
     return reply.send(fs.createReadStream(filePath))
   })
+
+  // ---------- 产出物列表：GET /api/v1/artifacts?scenario_id=&type=&page=&pageSize= ----------
+  // P1-1 服务端持久化（外部评估优化）：产出物由服务端列表提供（含 AI 标识/试用水印/会话归属）
+  app.get<{ Querystring: { scenario_id?: string; type?: string; page?: string; pageSize?: string } }>(
+    '/api/v1/artifacts',
+    { preHandler: [authenticate(jwtSecret), tenantGuard] },
+    async (request) => {
+      const tenantId = request.tenantId as string
+      const scenarioId = request.query.scenario_id ?? null
+      const type = request.query.type ?? null
+      const page = Math.max(1, Number(request.query.page) || 1)
+      const pageSize = Math.min(50, Math.max(1, Number(request.query.pageSize) || 20))
+      const where = ['tenant_id = ?']
+      const params: unknown[] = [tenantId]
+      if (scenarioId) { where.push('scenario_id = ?'); params.push(scenarioId) }
+      if (type) { where.push('type = ?'); params.push(type) }
+      const total = (db.prepare(`SELECT COUNT(*) AS c FROM artifact WHERE ${where.join(' AND ')}`).get(...params) as { c: number }).c
+      const rows = db.prepare(
+        `SELECT id, scenario_id, conversation_id, type, status, url, ai_label, trial_watermark,
+                source_artifact_id, fail_reason, created_at, completed_at
+         FROM artifact WHERE ${where.join(' AND ')}
+         ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      ).all(...params, pageSize, (page - 1) * pageSize) as {
+        id: string; scenario_id: string; conversation_id: string | null; type: string; status: string
+        url: string | null; ai_label: number; trial_watermark: number; source_artifact_id: string | null
+        fail_reason: string | null; created_at: string; completed_at: string | null
+      }[]
+      return {
+        data: rows.map((r) => ({
+          id: r.id, scenario_id: r.scenario_id, conversation_id: r.conversation_id, type: r.type, status: r.status,
+          url: r.url, ai_label: r.ai_label === 1, trial_watermark: r.trial_watermark === 1,
+          source_artifact_id: r.source_artifact_id, fail_reason: r.fail_reason,
+          created_at: r.created_at, completed_at: r.completed_at,
+        })),
+        pagination: { page, pageSize, total },
+      }
+    },
+  )
 }

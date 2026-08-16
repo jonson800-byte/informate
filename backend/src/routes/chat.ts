@@ -384,4 +384,43 @@ export function registerChatRoutes(app: FastifyInstance, jwtSecret: string, opts
       return { conversation_id: convId, messages: rows }
     },
   )
+
+  // ---------- 会话列表：GET /api/v1/chat/conversations?scenario_id=&page=&pageSize= ----------
+  // P1-1 服务端持久化（外部评估优化）：会话由服务端列表提供，前端 localStorage 降级为缓存
+  app.get<{ Querystring: { scenario_id?: string; page?: string; pageSize?: string } }>(
+    '/api/v1/chat/conversations',
+    { preHandler: [authenticate(jwtSecret), tenantGuard] },
+    async (request) => {
+      const tenantId = request.tenantId as string
+      const scenarioId = request.query.scenario_id ?? null
+      const page = Math.max(1, Number(request.query.page) || 1)
+      const pageSize = Math.min(50, Math.max(1, Number(request.query.pageSize) || 20))
+      const where = ['c.tenant_id = ?']
+      const params: unknown[] = [tenantId]
+      if (scenarioId) { where.push('c.scenario_id = ?'); params.push(scenarioId) }
+      const total = (db.prepare(`SELECT COUNT(*) AS c FROM conversation c WHERE ${where.join(' AND ')}`).get(...params) as { c: number }).c
+      const rows = db.prepare(
+        `SELECT c.id, c.scenario_id, c.status, c.billing_state, c.turns, c.frozen_credit, c.settled_credit,
+                c.started_at, c.ended_at,
+                (SELECT content FROM message m WHERE m.conversation_id = c.id AND m.role = 'user' ORDER BY rowid DESC LIMIT 1) AS last_user_msg,
+                (SELECT COUNT(*) FROM message m WHERE m.conversation_id = c.id) AS message_count
+         FROM conversation c WHERE ${where.join(' AND ')}
+         ORDER BY c.started_at DESC LIMIT ? OFFSET ?`,
+      ).all(...params, pageSize, (page - 1) * pageSize) as {
+        id: string; scenario_id: string; status: string; billing_state: string; turns: number
+        frozen_credit: number; settled_credit: number; started_at: string; ended_at: string | null
+        last_user_msg: string | null; message_count: number
+      }[]
+      return {
+        data: rows.map((r) => ({
+          id: r.id, scenario_id: r.scenario_id, status: r.status, billing_state: r.billing_state,
+          turns: r.turns, frozen_credit: r.frozen_credit, settled_credit: r.settled_credit,
+          started_at: r.started_at, ended_at: r.ended_at,
+          title: (r.last_user_msg ?? '').slice(0, 30) || '新会话',
+          message_count: r.message_count,
+        })),
+        pagination: { page, pageSize, total },
+      }
+    },
+  )
 }

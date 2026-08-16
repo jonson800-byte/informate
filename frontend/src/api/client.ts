@@ -26,6 +26,9 @@ import type {
   TxnsResponse,
   UserInfo,
   WorkspaceResponse,
+  ConversationListItem,
+  ArtifactListItem,
+  Paged,
 } from './types'
 
 const TOKEN_KEY = 'informate_token'
@@ -102,6 +105,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 // ---------- 认证 ----------
+const qs = (p?: Record<string, unknown>) => {
+  if (!p) return ''
+  const parts = Object.entries(p).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+  return parts.length ? '?' + parts.join('&') : ''
+}
+
 export const api = {
   login: (account: string, password: string) =>
     request<LoginResponse>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ account, password }) }),
@@ -168,6 +177,17 @@ export const api = {
 
   txns: (page = 1, pageSize = 20, type?: string) =>
     request<TxnsResponse>(`/api/v1/credit/txns?page=${page}&pageSize=${pageSize}${type ? `&type=${encodeURIComponent(type)}` : ''}`),
+
+  // ---------- 会话/产出物列表（P1-1 服务端持久化） ----------
+  conversations: (params?: { scenario_id?: string; page?: number; pageSize?: number }) =>
+    request<Paged<ConversationListItem>>(
+      `/api/v1/chat/conversations${qs(params)}`,
+    ),
+
+  artifacts: (params?: { scenario_id?: string; type?: string; page?: number; pageSize?: number }) =>
+    request<Paged<ArtifactListItem>>(
+      `/api/v1/artifacts${qs(params)}`,
+    ),
 
   recharge: (tier: number, idempotencyKey: string) =>
     request<RechargeResponse>('/api/v1/credit/recharge', {

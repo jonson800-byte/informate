@@ -20,6 +20,7 @@ export interface SessionState {
   busy: boolean
   /** 50 轮上限锁定（第 51 轮被拦截后输入框禁用） */
   locked: boolean
+  billing_state?: string
 }
 
 /** 会话状态更新：支持函数式更新（prev → patch），保证 SSE 增量不丢帧 */

@@ -440,3 +440,22 @@ test('T6.7 已结束会话发消息 → 400 CONVERSATION_CLOSED', async () => {
   assert.equal(res.statusCode, 409, '已结束会话发消息应 409')
   assert.ok(res.json().message.includes('新开对话'))
 })
+
+// ---------- 8. 服务端会话列表（P1-1） ----------
+test('T6.8 会话列表：GET /chat/conversations 按场景分页 + title 摘要', async () => {
+  const res = await inject('GET', '/api/v1/chat/conversations?scenario_id=industry-worker&pageSize=20', ownerToken)
+  assert.equal(res.statusCode, 200, res.body)
+  const body = res.json()
+  assert.ok(Array.isArray(body.data))
+  assert.ok(body.data.length >= 3, `应有多个会话，实际 ${body.data.length}`)
+  const mine = body.data.find((c) => c.id === 'conv-t6-1')
+  assert.ok(mine, '应有 conv-t6-1')
+  assert.equal(mine.scenario_id, 'industry-worker')
+  assert.equal(mine.status, 'active')
+  assert.equal(typeof mine.title, 'string')
+  assert.ok(mine.message_count >= 1, '应有消息数')
+
+  // 场景过滤
+  const imgRes = await inject('GET', '/api/v1/chat/conversations?scenario_id=nonexist', ownerToken)
+  assert.equal(imgRes.json().data.length, 0, '无关场景不应返回')
+})

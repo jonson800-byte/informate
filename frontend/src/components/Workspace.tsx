@@ -277,16 +277,16 @@ export default function Workspace(): React.JSX.Element {
     [states, updateSession, persistConv, refreshBalance],
   )
 
-  // ---------- 切换场景：恢复该场景会话（FR-104 各场景历史独立） ----------
+  // ---------- 切换场景：恢复该场景会话（FR-104 各场景历史独立；P1-1 服务端持久化优先） ----------
   const switchScenario = useCallback(
     (depId: string) => {
       setActiveDepId(depId)
       const cur = ensureState(depId)
       // 该场景已有本地消息 → 直接恢复
       if (cur.session.messages.length > 0) return
-      // 否则：若已存在会话 id，尝试从后端加载历史（GET /chat/messages?conversation_id=）
       const convId = cur.session.convId
       if (convId) {
+        // 已有会话 id → 从后端加载历史
         void (async () => {
           try {
             const hist = await api.chatHistory(convId)
@@ -302,9 +302,35 @@ export default function Workspace(): React.JSX.Element {
             /* 历史加载失败静默（如会话已被结算） */
           }
         })()
+      } else {
+        // 无本地会话 → 从服务端会话列表恢复最近会话（P1-1：刷新/换机不丢业务记录）
+        void (async () => {
+          try {
+            const dep = workspace?.scenarios.find((s) => s.id === depId)
+            const list = await api.conversations({ scenario_id: dep?.scenario_id ?? undefined, pageSize: 1 })
+            const latest = list.data[0]
+            if (!latest) return
+            const hist = await api.chatHistory(latest.id)
+            const msgs: ChatMessageUI[] = hist.messages.map((m) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              round_no: m.round_no,
+              credit_charged: m.credit_charged,
+            }))
+            updateSession(depId, {
+              convId: latest.id,
+              messages: msgs,
+              turns: Math.max(...msgs.map((m) => m.round_no ?? 0), 0),
+              billing_state: latest.billing_state,
+            })
+          } catch {
+            /* 列表/历史加载失败静默（localStorage 兜底） */
+          }
+        })()
       }
     },
-    [states, updateSession],
+    [states, updateSession, workspace],
   )
 
   // ---------- 跨场景传递（FR-403/404；试用期隐藏） ----------

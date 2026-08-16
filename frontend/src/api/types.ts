@@ -371,3 +371,37 @@ export const SCENARIO_PACKAGE_CATALOG: ScenarioPackageCatalog[] = [
     display_name_template: '{industry}营销生图',
   },
 ]
+
+export interface ConversationListItem {
+  id: string
+  scenario_id: string
+  status: string
+  billing_state: string
+  turns: number
+  frozen_credit: number
+  settled_credit: number
+  started_at: string
+  ended_at: string | null
+  title: string
+  message_count: number
+}
+
+export interface ArtifactListItem {
+  id: string
+  scenario_id: string
+  conversation_id: string | null
+  type: string
+  status: string
+  url: string | null
+  ai_label: boolean
+  trial_watermark: boolean
+  source_artifact_id: string | null
+  fail_reason: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+export interface Paged<T> {
+  data: T[]
+  pagination: { page: number; pageSize: number; total: number }
+}
