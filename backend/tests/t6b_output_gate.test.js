@@ -159,6 +159,7 @@ async function startMocks() {
 test.before(async () => {
   await startMocks()
   app = buildApp({
+    security: false,
     dbPath: ':memory:',
     jwtSecret: 't6b-test-secret',
     chat: {
@@ -221,6 +222,7 @@ test('T6B.1 输出合规闸门：违规块不达浏览器 + 不落库不结算',
 test('T6B.2 输出合规闸门：无违禁词回复正常通过（不误伤）', async () => {
   // 独立实例（无违规注入）验证闸门不误伤
   const app2 = buildApp({
+    security: false,
     dbPath: ':memory:',
     jwtSecret: 't6b2-secret',
     chat: {

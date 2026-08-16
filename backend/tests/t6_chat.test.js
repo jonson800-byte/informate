@@ -190,6 +190,7 @@ test.before(async () => {
   })
 
   app = buildApp({
+    security: false,
     dbPath: ':memory:',
     jwtSecret: 't6-test-secret',
     chat: {

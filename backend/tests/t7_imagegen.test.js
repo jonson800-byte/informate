@@ -58,6 +58,7 @@ async function waitStatus(taskId, target, { timeout = 8000 } = {}) {
 
 test.before(async () => {
   app = buildApp({
+    security: false,
     dbPath: ':memory:',
     jwtSecret: 't7-test-secret',
     artifactsDir: ARTIFACTS_DIR,

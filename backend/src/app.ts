@@ -15,6 +15,7 @@ import { registerCreditRoutes } from './routes/credit'
 import { registerAdminCreditRoutes } from './routes/admin_credit'
 import { registerChatRoutes, type ChatRouteOptions } from './routes/chat'
 import { registerImageGenRoutes } from './routes/imagegen'
+import { installSecurity } from './middleware/security'
 
 /** Fastify 类型扩展：app.db 全局数据库实例 */
 declare module 'fastify' {
@@ -34,6 +35,8 @@ export interface BuildAppOptions {
   seedreamMockDelayMs?: [number, number]
   /** T6 Chat 路由选项（Hermes 客户端 / 记忆 / 合规服务地址，测试可注入 mock） */
   chat?: ChatRouteOptions
+  /** 安全加固开关（限流/响应头；测试传 false 避免限流干扰，默认 true） */
+  security?: boolean
 }
 
 /**
@@ -60,6 +63,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 
   // 统一错误格式
   app.setErrorHandler(errorHandler)
+
+  // P0-6 安全加固：限流（登录/一般/模型/下载分级）+ 安全响应头 + CORS 白名单 + 请求体限制
+  if (opts.security !== false) {
+    installSecurity(app, { isProd: process.env.NODE_ENV === 'production' })
+  }
 
   // 路由
   registerHealthRoutes(app)

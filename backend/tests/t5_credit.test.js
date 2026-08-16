@@ -78,7 +78,7 @@ function inject(method, url, token, payload) {
 }
 
 test.before(async () => {
-  app = buildApp({ dbPath: ':memory:', jwtSecret: 't5-test-secret' })
+  app = buildApp({ dbPath: ':memory:', jwtSecret: 't5-test-secret', security: false })
   await app.ready()
   seed(app)
   ownerToken = await login('owner', 'owner123')
