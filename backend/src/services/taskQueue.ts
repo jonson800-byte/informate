@@ -190,10 +190,19 @@ function createBullmqQueue(opts: TaskQueueOptions): TaskQueue {
  */
 export function createTaskQueue(opts: TaskQueueOptions): TaskQueue {
   const wantRedis = !!opts.redisUrl || !!process.env.REDIS_URL
+  const isProd = process.env.NODE_ENV === 'production'
+  // P0-3 生产强制（外部评估优化）：生产环境必须使用持久化队列（Redis+BullMQ），
+  // 否则进程重启/发布会丢失已冻结积分的任务（只能靠兜底扫描退分，无法恢复用户请求）。
+  if (isProd && !wantRedis) {
+    throw new Error('生产模式（NODE_ENV=production）必须配置 REDIS_URL 使用持久化队列；请先部署 Redis 并设置 REDIS_URL，再启动服务')
+  }
   if (wantRedis) {
     if (canRequire('bullmq')) {
       console.info('[taskQueue] 使用 Redis + BullMQ 队列（REDIS_URL 已配置）')
       return createBullmqQueue(opts)
+    }
+    if (isProd) {
+      throw new Error('生产模式（NODE_ENV=production）已配置 REDIS_URL 但未安装 bullmq；请先 npm i bullmq 再启动')
     }
     console.warn('[taskQueue] REDIS_URL 已设置但未安装 bullmq，回落内存 FIFO 队列（MVP 单机形态，技术方案 R4）')
   }

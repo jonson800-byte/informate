@@ -60,3 +60,28 @@ test('T15.4 调用日志落库：成功/错误 + 字段校验', () => {
   assert.equal(rows[1].error_msg, '首包超时')
   db.close()
 })
+
+test('T15.5 生产强制持久化队列：NODE_ENV=production 无 REDIS_URL → 拒绝启动', () => {
+  const { createTaskQueue } = require('../src/services/taskQueue.ts')
+  const prev = process.env.NODE_ENV
+  const prevRedis = process.env.REDIS_URL
+  process.env.NODE_ENV = 'production'
+  delete process.env.REDIS_URL
+  try {
+    assert.throws(
+      () => createTaskQueue({ processor: async () => {} }),
+      /必须配置 REDIS_URL/,
+      '生产模式无 Redis 应拒绝启动',
+    )
+    // 非生产模式正常回落内存队列
+    process.env.NODE_ENV = 'development'
+    const q = createTaskQueue({ processor: async () => {} })
+    assert.equal(typeof q.enqueue, 'function')
+    q.close()
+  } finally {
+    if (prev === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = prev
+    if (prevRedis === undefined) delete process.env.REDIS_URL
+    else process.env.REDIS_URL = prevRedis
+  }
+})
