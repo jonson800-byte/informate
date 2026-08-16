@@ -16,6 +16,22 @@ export interface HermesChatMessage {
   content: string
 }
 
+/** 模型调用记录回调（由接入方注入 logModelCall，P0-1 统一模型适配层） */
+export interface ModelCallRecord {
+  provider: 'hermes' | 'seedream'
+  model: string
+  requestId?: string | null
+  kind: 'chat' | 'image' | 'video'
+  latencyMs?: number | null
+  status: 'success' | 'error'
+  errorClass?: string | null
+  errorMsg?: string | null
+  tokensIn?: number | null
+  tokensOut?: number | null
+  costYuan?: number | null
+  meta?: Record<string, unknown> | null
+}
+
 export interface HermesClientOptions {
   mode?: 'mock' | 'real'
   baseUrl?: string
@@ -26,6 +42,8 @@ export interface HermesClientOptions {
   chunkSize?: number
   /** mock 模式：自定义回复文本（测试注入违禁词等场景用；缺省用 buildMockReply） */
   mockReply?: string
+  /** 模型调用记录回调（real 模式每次调用后触发；不记录敏感内容） */
+  onCall?: (call: ModelCallRecord) => void
 }
 
 export interface HermesStreamParams {
@@ -68,12 +86,45 @@ export function createHermesClient(opts: HermesClientOptions = {}): HermesClient
 
   if (mode === 'real') {
     // 真实模式：转发 Hermes api_server 的 OpenAI 兼容流式接口
+    const requestId = 'hm-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+    const startedAt = Date.now()
+    const finishCall = (status: 'success' | 'error', err?: unknown, extra?: Partial<ModelCallRecord>) => {
+      try {
+        const errMsg = err instanceof Error ? err.message : err ? String(err) : null
+        const cls = err ? classifyErr(errMsg) : null
+        opts.onCall?.({
+          provider: 'hermes',
+          model: 'hermes-agent',
+          requestId,
+          kind: 'chat',
+          latencyMs: Date.now() - startedAt,
+          status,
+          errorClass: cls,
+          errorMsg: errMsg,
+          ...extra,
+        })
+      } catch {
+        // 日志失败不影响主链路
+      }
+    }
+    /** 轻量错误分类（本地实现，避免循环依赖 modelLog） */
+    const classifyErr = (msg: string | null): string => {
+      if (!msg) return 'unknown'
+      if (msg.includes('429') || msg.includes('限流')) return 'rate_limited'
+      if (msg.includes('超时') || msg.includes('timeout')) return 'timeout'
+      if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('ECONNRESET')) return 'network'
+      if (msg.includes('401') || msg.includes('403') || msg.includes('密钥')) return 'auth'
+      if (msg.includes('HTTP 5')) return 'server'
+      return 'unknown'
+    }
     return {
       async *streamChat({ messages, userId, sessionId, signal }) {
         // H5 修复（Codex 批次 C）：Hermes 上游挂起时给首包超时（冷启动 SLA ≤40s）+ 空闲超时
         const firstByteMs = Number(process.env.HERMES_FIRST_BYTE_TIMEOUT_MS ?? 40000)
         const idleMs = Number(process.env.HERMES_IDLE_TIMEOUT_MS ?? 60000)
-        const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+        let res: Response
+        try {
+          res = await fetch(`${baseUrl}/v1/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -84,9 +135,15 @@ export function createHermesClient(opts: HermesClientOptions = {}): HermesClient
           body: JSON.stringify({ model: 'hermes-agent', messages, stream: true }),
           signal,
         })
+        } catch (err) {
+          finishCall('error', err)
+          throw err
+        }
         if (!res.ok || !res.body) {
           const detail = await res.text().catch(() => '')
-          throw new Error(`Hermes api_server 请求失败：HTTP ${res.status} ${detail.slice(0, 300)}`)
+          const err = new Error(`Hermes api_server 请求失败：HTTP ${res.status} ${detail.slice(0, 300)}`)
+          finishCall('error', err, { meta: { http_status: res.status } })
+          throw err
         }
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
@@ -112,7 +169,10 @@ export function createHermesClient(opts: HermesClientOptions = {}): HermesClient
             const trimmed = line.trim()
             if (!trimmed.startsWith('data:')) continue
             const data = trimmed.slice(5).trim()
-            if (data === '[DONE]') return
+            if (data === '[DONE]') {
+              finishCall('success')
+              return
+            }
             try {
               const parsed = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] }
               const delta = parsed.choices?.[0]?.delta?.content

@@ -26,6 +26,7 @@ import { authenticate, requireRole } from '../middleware/auth'
 import { AppError, Errors } from '../utils/errors'
 import { createCreditService, DEFAULT_PRICES, PRICE_KEYS } from '../services/credit'
 import { createHermesClient, type HermesClient, type HermesChatMessage } from '../services/hermesClient'
+import { logModelCall } from '../services/modelLog'
 import { createMemoryService, type MemoryService, type MemoryHit } from '../services/memory'
 
 export interface ChatRouteOptions {
@@ -70,7 +71,13 @@ export function registerChatRoutes(app: FastifyInstance, jwtSecret: string, opts
   const complianceTimeoutMs = opts.complianceTimeoutMs ?? 5000
 
   // 客户端：测试注入优先，否则按配置创建（默认 mock）
-  const hermesClient = opts.hermesClient ?? createHermesClient(opts.hermes)
+  const hermesClient =
+    opts.hermesClient ??
+    createHermesClient({
+      ...opts.hermes,
+      // P0-1 统一模型适配层：每次真实模型调用落 model_call_log（供应商/延迟/错误分类/成本）
+      onCall: (call) => logModelCall(db, call),
+    })
   const memory: MemoryService = opts.memoryService ?? createMemoryService({ baseUrl: opts.memoryBaseUrl })
 
   /** 调合规服务（fail-closed：服务不可用 → 503，不放过未审核内容） */
