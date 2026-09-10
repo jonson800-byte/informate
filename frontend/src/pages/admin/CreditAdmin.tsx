@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { api, ApiError } from '../../api/client'
-import type { AdminOverview } from '../../api/types'
+import type { AdminOverview, RechargeOrder } from '../../api/types'
 import { useApp } from '../../state/AppContext'
 import { ExportButton, TXN_TYPE_LABEL, useExportRows } from './shared'
 
@@ -16,11 +16,30 @@ export default function CreditAdmin(): React.JSX.Element {
   const [note, setNote] = useState('')
   const [adjusting, setAdjusting] = useState(false)
   const [filterTenant, setFilterTenant] = useState('')
+  const [orders, setOrders] = useState<RechargeOrder[]>([])
+  const [confirming, setConfirming] = useState<string | null>(null)
   const { rows, loading, refresh } = useExportRows({ tenant_id: filterTenant || undefined })
 
   useEffect(() => {
     void api.adminOverview().then((r) => setOverview(r.overview)).catch(() => undefined)
+    void api.adminRechargeOrders().then((r) => setOrders(r.data)).catch(() => undefined)
   }, [])
+
+  async function confirmRecharge(order: RechargeOrder): Promise<void> {
+    if (!window.confirm(`确认已收到 ${order.tenant_name} 对公转账 ¥${order.tier_yuan}？确认后到账 ${order.points} 积分。`)) return
+    setConfirming(order.id)
+    try {
+      const result = await api.adminConfirmRecharge(order.id, '管理后台确认对公收款')
+      toast(result.message, 'success')
+      setOrders((current) => current.filter((item) => item.id !== order.id))
+      void api.adminOverview().then((r) => setOverview(r.overview)).catch(() => undefined)
+      refresh()
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : '确认充值失败', 'error')
+    } finally {
+      setConfirming(null)
+    }
+  }
 
   async function adjust(): Promise<void> {
     const num = Number(amount)
@@ -57,6 +76,28 @@ export default function CreditAdmin(): React.JSX.Element {
         <div className="stat-card"><div className="label">累计收入</div><div className="value">{overview?.total_revenue ?? '—'}</div></div>
         <div className="stat-card"><div className="label">累计消耗</div><div className="value">{overview?.total_consumed ?? '—'}</div></div>
         <div className="stat-card"><div className="label">在途冻结</div><div className="value">{overview?.frozen_outstanding ?? '—'}</div></div>
+      </div>
+
+      <div className="card" style={{ padding: 16, marginBottom: 20 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 10 }}>待确认充值订单</h3>
+        {orders.length === 0 ? (
+          <div style={{ color: 'var(--text-3)', fontSize: 13 }}>暂无待确认订单</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>提交时间</th><th>租户</th><th>账号</th><th>金额</th><th>到账积分</th><th>操作</th></tr></thead>
+              <tbody>{orders.map((order) => (
+                <tr key={order.id}>
+                  <td>{order.created_at?.slice(0, 16)}</td><td>{order.tenant_name}</td><td>{order.user_name}</td>
+                  <td>¥{order.tier_yuan}</td><td>{order.points}</td>
+                  <td><button className="btn btn-primary btn-sm" disabled={confirming === order.id} onClick={() => void confirmRecharge(order)}>
+                    {confirming === order.id ? '确认中…' : '确认收款'}
+                  </button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ padding: 16, marginBottom: 20 }}>

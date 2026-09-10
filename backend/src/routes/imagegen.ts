@@ -6,6 +6,7 @@ import { AppError, Errors } from '../utils/errors'
 import { createCreditService, DEFAULT_PRICES, PRICE_KEYS, type TxnRow } from '../services/credit'
 import { createSeedreamClient, safeFileName, type SeedreamClient, type SeedreamClientOptions } from '../services/seedream'
 import { createTaskQueue, type QueueTask } from '../services/taskQueue'
+import { logModelCall } from '../services/modelLog'
 
 /**
  * 生图执行器路由（T7）
@@ -56,6 +57,26 @@ export interface ImageGenRouteOptions {
   artifactsDir?: string
   /** Seedream 客户端选项（测试注入 mock 延迟/失败标记；artifactsDir 由路由注入） */
   seedream?: Omit<SeedreamClientOptions, 'artifactsDir'>
+  /** 合规检查注入点；缺省调用 COMPLIANCE_BASE_URL。 */
+  complianceCheck?: (prompt: string) => Promise<{ blocked?: boolean; reason?: string | null }>
+}
+
+async function checkImageCompliance(prompt: string): Promise<{ blocked?: boolean; reason?: string | null }> {
+  const complianceBaseUrl = process.env.COMPLIANCE_BASE_URL ?? 'http://127.0.0.1:9100'
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 5000)
+  try {
+    const res = await fetch(`${complianceBaseUrl}/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_prompt: prompt, rule_packs: ['general', 'medical'] }),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`合规服务 HTTP ${res.status}`)
+    return await res.json() as { blocked?: boolean; reason?: string | null }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /** 查询任务最新一条指定类型流水 */
@@ -136,8 +157,19 @@ export function registerImageGenRoutes(
   const artifactsDir = opts.artifactsDir ?? path.join(__dirname, '..', '..', 'data', 'artifacts')
   fs.mkdirSync(artifactsDir, { recursive: true })
 
-  const seedream = createSeedreamClient({ artifactsDir, ...opts.seedream })
-  const queue = createTaskQueue({ concurrency: 2, processor: buildProcessor(db, credit, seedream) })
+  const seedream = createSeedreamClient({
+    artifactsDir,
+    ...opts.seedream,
+    onCall: (call) => {
+      opts.seedream?.onCall?.(call)
+      logModelCall(db, call)
+    },
+  })
+  const complianceCheck = opts.complianceCheck ?? checkImageCompliance
+  const queue = createTaskQueue({
+    concurrency: Math.max(1, Number(process.env.IMAGE_QUEUE_CONCURRENCY ?? 2)),
+    processor: buildProcessor(db, credit, seedream),
+  })
 
   const tenantGuard = requireRole('owner', 'employee')
 
@@ -212,28 +244,14 @@ export function registerImageGenRoutes(
       // 改为 fetch + COMPLIANCE_BASE_URL 真实外呼，失败 fail-closed 503
       const promptToCheck = request.body?.prompt
       if (promptToCheck) {
-        let check: { blocked?: boolean; reason?: string | null } | null = null
+        let check: { blocked?: boolean; reason?: string | null }
         try {
-          const complianceBaseUrl = process.env.COMPLIANCE_BASE_URL ?? 'http://127.0.0.1:9100'
-          const controller = new AbortController()
-          const timer = setTimeout(() => controller.abort(), 5000)
-          try {
-            const res = await fetch(`${complianceBaseUrl}/check`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ image_prompt: promptToCheck, rule_packs: ['general', 'medical'] }),
-              signal: controller.signal,
-            })
-            if (!res.ok) throw new Error(`合规服务 HTTP ${res.status}`)
-            check = (await res.json()) as typeof check
-          } finally {
-            clearTimeout(timer)
-          }
+          check = await complianceCheck(promptToCheck)
         } catch {
           // 合规服务不可用 → fail-closed（NFR-10）
           throw new AppError(503, 'COMPLIANCE_UNAVAILABLE', '合规服务不可用，请稍后重试')
         }
-        if (check && check.blocked) {
+        if (check.blocked) {
           // 拦截：不产生扣费——原子 release 已冻结分
           try {
             credit.release({ tenantId, refType: 'image', refId: taskId, note: '生图前置合规拦截，解冻退回' })

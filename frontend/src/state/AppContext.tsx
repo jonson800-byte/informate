@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react'
 import type { TenantInfo, UserInfo } from '../api/types'
-import { clearAuth, getCachedTenant, getCachedUser, getToken } from '../api/client'
+import { api, clearAuth, getCachedTenant, getCachedUser, getToken } from '../api/client'
 
 /* ---------- Toast 轻提示（UIUX §2.5：右上滑入，3s 自动消失，可堆叠） ---------- */
 export interface ToastItem {
@@ -73,7 +73,6 @@ export function AppProvider({ children }: { children: React.ReactNode }): React.
   }, [])
 
   const refreshTenant = useCallback(async () => {
-    const { api } = await import('../api/client')
     try {
       const me = await api.me()
       setUser(me.user)

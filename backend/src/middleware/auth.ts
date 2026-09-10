@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import jwt from 'jsonwebtoken'
+import jwt, { type SignOptions } from 'jsonwebtoken'
 import { AppError, Errors } from '../utils/errors'
 
 /** JWT payload：三角色 owner / employee / admin，租户上下文 tenantId */
@@ -17,7 +17,11 @@ export interface TokenPayload {
 }
 
 /** 签发 JWT */
-export function signToken(payload: Omit<TokenPayload, 'iat' | 'exp'>, secret: string, expiresIn: string): string {
+export function signToken(
+  payload: Omit<TokenPayload, 'iat' | 'exp'>,
+  secret: string,
+  expiresIn: SignOptions['expiresIn'],
+): string {
   return jwt.sign(payload, secret, { expiresIn })
 }
 

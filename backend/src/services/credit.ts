@@ -342,7 +342,11 @@ export function createCreditService(db: Database.Database): CreditService {
           const existing = db.prepare(
             `SELECT * FROM credit_txn WHERE ref_type = ? AND ref_id = ? AND type = 'unfreeze' ORDER BY created_at DESC LIMIT 1`,
           ).get(refType, refId) as TxnRow | undefined
-          return { txn: existing, balance: getTenant(tenantId).balance, refunded: 0, replayed: true }
+          const replayTxn = existing ?? db.prepare(
+            `SELECT * FROM credit_txn WHERE ref_type = ? AND ref_id = ? AND type = 'settle' ORDER BY created_at DESC LIMIT 1`,
+          ).get(refType, refId) as TxnRow | undefined
+          if (!replayTxn) throw Errors.conflict('该任务没有可解冻或已结算的积分流水')
+          return { txn: replayTxn, balance: getTenant(tenantId).balance, refunded: 0, replayed: true }
         }
         // 已结算的不再解冻（Σsettle 已含在差额中，此处仅兜底语义）
         const tenant = getTenant(tenantId)

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { classifyModelError, retryWithBackoff, type ModelErrorClass } from './modelLog'
 
 /**
  * Seedream 生图客户端（T7）
@@ -10,11 +11,8 @@ import * as path from 'node:path'
  * 两种运行模式，按环境变量切换：
  * - mock（默认）：生成占位图（SVG）落盘 data/artifacts/，并模拟 1~3s 生成延迟；
  *   用于本地开发与自动化测试（无火山方舟密钥也能跑通全链路）。
- * - real：预留火山方舟（Volcengine Ark）Seedream 5.0 文生图接口；
- *   设置 VOLC_ARK_API_KEY 后启用（SEEDREAM_MODE=mock 可强制 mock）。
- *
- * 说明：真实接入时补全 generateReal() 内 TODO 标注的 SDK 调用即可，
- * 返回结构保持 SeedreamResult 不变，上游（任务队列 worker）无需改动。
+ * - real：调用火山方舟 OpenAI 兼容 images/generations 接口，支持 URL 或 base64 响应，
+ *   下载校验后落盘；配置 VOLC_ARK_API_KEY 与 VOLC_ARK_SEEDREAM_MODEL 启用。
  */
 
 /** 生图请求参数 */
@@ -50,6 +48,19 @@ export interface SeedreamClientOptions {
   mockDelayMs?: [number, number]
   /** mock 强制失败标记：prompt 包含该串时抛错（测试失败路径用） */
   mockFailMarker?: string
+  mode?: 'mock' | 'real'
+  apiKey?: string
+  apiBase?: string
+  /** 火山方舟推理接入点 ID/模型 ID，生产必须显式配置。 */
+  model?: string
+  size?: string
+  timeoutMs?: number
+  maxRetries?: number
+  onCall?: (call: {
+    provider: 'seedream'; model: string; requestId?: string | null; kind: 'image'
+    latencyMs: number; status: 'success' | 'error'; errorClass?: ModelErrorClass | null
+    errorMsg?: string | null; meta?: Record<string, unknown> | null
+  }) => void
 }
 
 export interface SeedreamClient {
@@ -117,20 +128,23 @@ function generateMockSvg(params: SeedreamGenerateParams, artifactsDir: string): 
 /**
  * 真实模式：火山方舟（Volcengine Ark）Seedream 5.0 文生图接口。
  *
- * TODO(真实接入)：
- *   1. `npm i @volcengine/openapi`（或按火山方舟文档用 REST API）；
- *   2. 用 VOLC_ARK_API_KEY 初始化 SDK client（api.volcengine.com/ark/api/v3/images/generations，
- *      model=seedream-5.0 / doubao-seedream-3.0）；
- *   3. 提交异步任务 → 轮询任务状态 → 取回图片 URL → 下载到 artifactsDir（file = ${taskId}.png）；
- *   4. 返回 SeedreamResult（url 指向本地下载端点，保证前端访问路径统一）。
- * 本阶段未配置密钥/未装 SDK → 抛出明确错误，由 worker 走失败退分路径（FR-304）。
+ * 真实模式通过火山方舟 REST API 生成图片；供应商错误统一分类并按安全策略重试，
+ * 成功后下载到 artifactsDir，前端仍通过受鉴权的本地下载端点访问。
  */
-async function generateReal(params: SeedreamGenerateParams): Promise<SeedreamResult> {
-  void params // 预留参数
-  throw new Error(
-    'SEEDREAM_REAL_NOT_CONFIGURED: 火山方舟 Seedream 真实模式未接入。' +
-    '请安装 @volcengine/openapi 并配置 VOLC_ARK_API_KEY（或设置 SEEDREAM_MODE=mock 使用占位图模式）',
-  )
+function extensionForMime(mime: string): string {
+  if (mime.includes('jpeg')) return 'jpg'
+  if (mime.includes('webp')) return 'webp'
+  return 'png'
+}
+
+function assertSafeRemoteImageUrl(raw: string): URL {
+  const url = new URL(raw)
+  const host = url.hostname.toLowerCase()
+  const isIp = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(':')
+  if (url.protocol !== 'https:' || host === 'localhost' || host.endsWith('.local') || isIp) {
+    throw new Error('Seedream 返回了不安全的图片下载地址')
+  }
+  return url
 }
 
 /**
@@ -144,11 +158,90 @@ export function createSeedreamClient(opts: SeedreamClientOptions): SeedreamClien
   const mockDelayMs: [number, number] = opts.mockDelayMs ?? [1000, 3000]
   const failMarker = opts.mockFailMarker ?? '__SEEDREAM_FAIL__'
 
-  const useReal = !!process.env.VOLC_ARK_API_KEY && process.env.SEEDREAM_MODE !== 'mock'
-  const mode: 'mock' | 'real' = useReal ? 'real' : 'mock'
-  if (mode === 'mock' && !process.env.VOLC_ARK_API_KEY) {
-    // 仅在显式需要 real 但没密钥时提示一次（开发默认 mock 不刷屏）
-    void 0
+  const apiKey = opts.apiKey ?? process.env.VOLC_ARK_API_KEY ?? ''
+  const model = opts.model ?? process.env.VOLC_ARK_SEEDREAM_MODEL ?? ''
+  const requestedMode = opts.mode ?? process.env.SEEDREAM_MODE
+  const mode: 'mock' | 'real' = requestedMode === 'real' || (!requestedMode && !!apiKey) ? 'real' : 'mock'
+  const apiBase = (opts.apiBase ?? process.env.VOLC_ARK_API_BASE ?? 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/$/, '')
+  const size = opts.size ?? process.env.SEEDREAM_SIZE ?? '2048x2048'
+  const timeoutMs = opts.timeoutMs ?? Number(process.env.SEEDREAM_TIMEOUT_MS ?? 90000)
+  const maxRetries = opts.maxRetries ?? Number(process.env.SEEDREAM_MAX_RETRIES ?? 2)
+
+  async function generateReal(params: SeedreamGenerateParams): Promise<SeedreamResult> {
+    if (!apiKey) throw new Error('VOLC_ARK_API_KEY 未配置')
+    if (!model) throw new Error('VOLC_ARK_SEEDREAM_MODEL 未配置（请填写火山方舟推理接入点/模型 ID）')
+    const startedAt = Date.now()
+    let requestId: string | null = null
+    try {
+      const generated = await retryWithBackoff(async () => {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), timeoutMs)
+        try {
+          const res = await fetch(`${apiBase}/images/generations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ model, prompt: params.prompt, size, response_format: 'url', watermark: true }),
+            signal: controller.signal,
+          })
+          requestId = res.headers.get('x-request-id') ?? res.headers.get('request-id')
+          if (!res.ok) {
+            const detail = await res.text().catch(() => '')
+            throw classifyModelError(
+              new Error(`Seedream 请求失败：HTTP ${res.status} ${detail.slice(0, 500)}`),
+              'seedream',
+              res.status,
+            )
+          }
+          return await res.json() as { data?: Array<{ url?: string; b64_json?: string }> }
+        } finally {
+          clearTimeout(timer)
+        }
+      }, { maxRetries })
+
+      const item = generated.data?.[0]
+      if (!item?.url && !item?.b64_json) throw new Error('Seedream 响应缺少图片数据')
+      let bytes: Buffer
+      let mime = 'image/png'
+      if (item.b64_json) {
+        bytes = Buffer.from(item.b64_json, 'base64')
+      } else {
+        const imageUrl = assertSafeRemoteImageUrl(item.url as string)
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), timeoutMs)
+        try {
+          const imageRes = await fetch(imageUrl, { signal: controller.signal })
+          if (!imageRes.ok) throw new Error(`Seedream 图片下载失败：HTTP ${imageRes.status}`)
+          mime = imageRes.headers.get('content-type')?.split(';')[0] ?? mime
+          if (!mime.startsWith('image/')) throw new Error(`Seedream 返回非图片内容：${mime}`)
+          bytes = Buffer.from(await imageRes.arrayBuffer())
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+      if (bytes.length === 0 || bytes.length > 25 * 1024 * 1024) throw new Error('Seedream 图片大小异常')
+      const file = `${safeFileName(params.taskId)}.${extensionForMime(mime)}`
+      fs.writeFileSync(path.join(opts.artifactsDir, file), bytes)
+      opts.onCall?.({
+        provider: 'seedream', model, requestId, kind: 'image', latencyMs: Date.now() - startedAt,
+        status: 'success', meta: { size, bytes: bytes.length },
+      })
+      return {
+        url: `/api/v1/artifacts/${safeFileName(params.taskId)}/download`,
+        file,
+        mime,
+        size: bytes.length,
+        model,
+        mode: 'real',
+      }
+    } catch (err) {
+      const normalized = classifyModelError(err, 'seedream')
+      opts.onCall?.({
+        provider: 'seedream', model: model || 'unconfigured', requestId, kind: 'image',
+        latencyMs: Date.now() - startedAt, status: 'error', errorClass: normalized.cls,
+        errorMsg: normalized.message,
+      })
+      throw normalized
+    }
   }
 
   return {

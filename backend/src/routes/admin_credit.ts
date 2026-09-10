@@ -31,6 +31,56 @@ export function registerAdminCreditRoutes(app: FastifyInstance, jwtSecret: strin
   const credit = createCreditService(db)
   const adminGuard = requireRole('admin')
 
+  // ---------- 待确认充值订单（生产对公转账/人工确认） ----------
+  app.get<{ Querystring: { status?: string } }>('/api/v1/admin/recharge-orders', {
+    preHandler: [authenticate(jwtSecret), adminGuard],
+  }, async (request) => {
+    const status = request.query.status ?? 'pending'
+    if (!['pending', 'confirmed', 'cancelled'].includes(status)) throw Errors.badRequest('充值订单状态无效')
+    const data = db.prepare(
+      `SELECT r.*, t.name AS tenant_name, u.name AS user_name
+       FROM recharge_order r JOIN tenant t ON t.id=r.tenant_id JOIN user u ON u.id=r.user_id
+       WHERE r.status=? ORDER BY r.created_at DESC LIMIT 200`,
+    ).all(status)
+    return { data }
+  })
+
+  app.post<{ Params: { id: string }; Body: { note?: string } }>('/api/v1/admin/recharge-orders/:id/confirm', {
+    preHandler: [authenticate(jwtSecret), adminGuard],
+    schema: { body: { type: 'object', properties: { note: { type: 'string', maxLength: 200 } } } },
+  }, async (request, reply) => {
+    const operator = request.userId as string
+    const order = db.prepare('SELECT * FROM recharge_order WHERE id=?').get(request.params.id) as
+      | { id: string; tenant_id: string; user_id: string; tier_yuan: number; status: string }
+      | undefined
+    if (!order) throw Errors.notFound('充值订单不存在')
+    if (order.status === 'cancelled') throw Errors.conflict('充值订单已取消')
+    if (order.status === 'confirmed') {
+      const tenant = db.prepare('SELECT balance FROM tenant WHERE id=?').get(order.tenant_id) as { balance: number }
+      return reply.send({ order_id: order.id, balance: tenant.balance, replayed: true, message: '订单已确认，无需重复操作' })
+    }
+    const result = db.transaction(() => {
+      const r = credit.recharge({
+        tenantId: order.tenant_id,
+        userId: order.user_id,
+        tier: order.tier_yuan,
+        idempotencyKey: `recharge-order:${order.id}:confirmed`,
+        note: `运营确认充值订单 ${order.id}`,
+      })
+      db.prepare(`UPDATE recharge_order SET status='confirmed', operator=?, note=?, confirmed_at=datetime('now') WHERE id=?`)
+        .run(operator, request.body?.note ?? null, order.id)
+      db.prepare(`INSERT INTO audit_log (tenant_id, user_id, action, object_type, object_id, detail, ip)
+                  VALUES (?,?,?,?,?,?,?)`)
+        .run(order.tenant_id, operator, 'recharge.confirm', 'recharge_order', order.id,
+          `确认收款 ¥${order.tier_yuan}，到账 ${r.txn.amount} 积分`, request.ip)
+      return r
+    })()
+    return reply.send({
+      order_id: order.id, balance: result.balance, points: result.txn.amount, replayed: false,
+      message: `充值订单已确认，到账 ${result.txn.amount} 积分`,
+    })
+  })
+
   // ---------- 积分看板 ----------
   app.get('/api/v1/admin/overview', {
     preHandler: [authenticate(jwtSecret), adminGuard],

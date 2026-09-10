@@ -90,7 +90,7 @@ export function createHermesClient(opts: HermesClientOptions = {}): HermesClient
     ? process.env.DEEPSEEK_API_KEY ?? ''
     : process.env.HERMES_API_KEY ?? 'spike-userid-test-key')
   const model = opts.model ?? (mode === 'deepseek'
-    ? process.env.DEEPSEEK_MODEL ?? 'deepseek-flash'
+    ? process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-flash'
     : 'hermes-agent')
   const streamDelayMs = opts.streamDelayMs ?? 20
   const chunkSize = opts.chunkSize ?? 12

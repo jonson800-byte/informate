@@ -10,7 +10,7 @@ import type Database from 'better-sqlite3'
  * - retryWithBackoff：只对可安全重放的请求使用（生图任务可重放；SSE 流不重放）
  */
 
-export type ModelProvider = 'hermes' | 'seedream'
+export type ModelProvider = 'hermes' | 'deepseek' | 'seedream'
 export type ModelErrorClass =
   | 'rate_limited'   // 429 限流（可重试）
   | 'timeout'        // 首包/空闲/总超时（可重试，需幂等）

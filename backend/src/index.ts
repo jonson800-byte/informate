@@ -1,7 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { buildApp } from './app'
-import { config } from './config'
+import { config, validateProductionConfig } from './config'
+import { ensureScenarioCatalog } from './db/seed'
+
+validateProductionConfig()
 
 // 确保数据目录存在
 if (config.dbPath !== ':memory:') {
@@ -9,6 +12,7 @@ if (config.dbPath !== ':memory:') {
 }
 
 const app = buildApp()
+ensureScenarioCatalog(app.db)
 
 // 积分冻结兜底扫描（Codex G1：任务级按 ref 状态释放）——每分钟扫一次，不阻塞进程退出
 import { createCreditService } from './services/credit'

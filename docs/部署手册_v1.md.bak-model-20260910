@@ -270,7 +270,7 @@ pm2 startup && pm2 save               # 开机自启
 | `REDIS_URL` | 空 | 如 `redis://localhost:6379/0`；生产必填 |
 | `CHAT_PROVIDER` | `mock` | `deepseek`（推荐）/`hermes`/`mock`（仅开发） |
 | `DEEPSEEK_API_KEY` | 空 | `CHAT_PROVIDER=deepseek` 时必填 |
-| `DEEPSEEK_MODEL` | `deepseek-flash` | DeepSeek 模型 ID |
+| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | DeepSeek 模型 ID |
 | `RECHARGE_MODE` | 开发 `mock` / 生产 `manual` | 生产提交待确认订单，由 admin 确认收款后入账 |
 | `HERMES_MODE` | `mock` | `mock`=本地占位流式回复（联调）；`real`=转发真实 Hermes api_server（上线必须 `real`） |
 | `HERMES_API_BASE`（部署任务书又称 HERMES_BASE_URL，代码实际读取前者） | `http://127.0.0.1:8647` | Hermes api_server 地址；`HERMES_MODE=real` 时生效 |

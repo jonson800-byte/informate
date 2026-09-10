@@ -17,7 +17,7 @@ const TIER_TAG: Record<number, string | undefined> = { 500: '最受欢迎', 2000
 /**
  * T10 充值弹窗（UIUX §4.3 / FR-601，AC-601）
  * 三档位：100=1100 / 500=6000 / 2000=25000（后台 price_config 可配，FR-704）
- * POST /api/v1/credit/recharge {tier} → 即时到账；trial/paused 充值即转 active（AC-504/605）
+ * 生产环境提交充值订单，运营确认收款后到账；开发 mock 模式可即时到账。
  */
 export default function RechargeModal({ onClose, onSuccess, prices }: Props): React.JSX.Element {
   const pointOf = (yuan: number) => Number(prices?.[`recharge.${yuan}`]) || DEFAULT_PRICES.recharge[yuan as keyof typeof DEFAULT_PRICES.recharge]
@@ -49,7 +49,8 @@ export default function RechargeModal({ onClose, onSuccess, prices }: Props): Re
     try {
       const res = await api.recharge(selected, `recharge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       toast(res.message, 'success')
-      onSuccess()
+      if (!res.pending) onSuccess()
+      else onClose()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '充值失败，请稍后重试')
     } finally {
@@ -83,11 +84,11 @@ export default function RechargeModal({ onClose, onSuccess, prices }: Props): Re
             ))}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12 }}>
-            支付方式：对公转账 / 在线支付（渠道待定，MVP 演示直接到账）
+            支付方式：对公转账；提交后由运营确认收款并到账
           </div>
           {error && <div className="error-text" style={{ marginBottom: 8 }}>{error}</div>}
           <button className="btn btn-primary btn-block" disabled={loading} onClick={() => void pay()}>
-            {loading ? '支付中…' : `立即支付 ¥${selected}`}
+            {loading ? '提交中…' : `提交充值申请 ¥${selected}`}
           </button>
           <div style={{ fontSize: 11, color: 'var(--text-3)', textAlign: 'center', marginTop: 10 }}>
             充值即开通正式版：移除试用水印、解锁跨场景传递（FR-504）

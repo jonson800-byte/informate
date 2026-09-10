@@ -203,8 +203,10 @@ export interface TxnsResponse {
 }
 
 export interface RechargeResponse {
-  txn: CreditTxn
-  balance: number
+  txn?: CreditTxn
+  balance?: number
+  order?: { id: string; tier_yuan: number; points: number; status: string }
+  pending?: boolean
   replayed: boolean
   message: string
 }
@@ -319,6 +321,17 @@ export interface AdminAdjustResponse {
   message: string
 }
 
+export interface RechargeOrder {
+  id: string
+  tenant_id: string
+  tenant_name: string
+  user_name: string
+  tier_yuan: number
+  points: number
+  status: 'pending' | 'confirmed' | 'cancelled'
+  created_at: string
+}
+
 /** 价格 key 常量（对齐 backend/src/services/credit.ts PRICE_KEYS） */
 export const PRICE_KEYS = {
   session: 'credit.work_assistant.session',
@@ -336,7 +349,7 @@ export const DEFAULT_PRICES = {
   roundLimit: 50,
   image: 15,
   imageDisplay: 20, // 对外展示 20，实际执行 15
-  minFreeze: 10,
+  minFreeze: 15,
   lowBalanceWarn: 30, // FR-605 预警阈值
   recharge: { 100: 1100, 500: 6000, 2000: 25000 },
 } as const

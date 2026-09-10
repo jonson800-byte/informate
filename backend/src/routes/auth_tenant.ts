@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { signToken } from '../middleware/auth'
 import { Errors } from '../utils/errors'
 import { newId } from '../utils/id'
+import type { SignOptions } from 'jsonwebtoken'
 
 /** 注册请求体：企业信息（FR-101 开户字段子集）+ 主账号凭证 */
 interface RegisterBody {
@@ -29,7 +30,11 @@ interface LoginBody {
  * - POST /api/v1/auth/register：注册 = 创建 trial 租户 + owner 主账号（FR-101/FR-106 trial 可正常使用）
  * - POST /api/v1/auth/login：登录（owner/employee 同 user 表，admin 独立 admin 表，G3 定稿双通道）
  */
-export function registerAuthTenantRoutes(app: FastifyInstance, jwtSecret: string, jwtExpiresIn: string): void {
+export function registerAuthTenantRoutes(
+  app: FastifyInstance,
+  jwtSecret: string,
+  jwtExpiresIn: SignOptions['expiresIn'],
+): void {
   const db = app.db
 
   // ---------- 注册（公开）：创建 trial 租户 + owner ----------

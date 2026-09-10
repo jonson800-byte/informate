@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { authenticate, requireRole } from '../middleware/auth'
 import { AppError, Errors } from '../utils/errors'
 import { createCreditService, DEFAULT_PRICES, PRICE_KEYS, type TxnRow } from '../services/credit'
+import { newId } from '../utils/id'
 
 /**
  * 积分管线租户侧路由（T5）
@@ -16,7 +17,11 @@ import { createCreditService, DEFAULT_PRICES, PRICE_KEYS, type TxnRow } from '..
  *
  * 计费口径（PRD §4.2/§4.3）：冻结先扣余额（hold），结算不改余额（冻结时已扣），失败/超时原子解冻。
  */
-export function registerCreditRoutes(app: FastifyInstance, jwtSecret: string): void {
+export function registerCreditRoutes(
+  app: FastifyInstance,
+  jwtSecret: string,
+  opts: { rechargeMode?: 'mock' | 'manual' } = {},
+): void {
   const db = app.db
   const credit = createCreditService(db)
 
@@ -38,11 +43,40 @@ export function registerCreditRoutes(app: FastifyInstance, jwtSecret: string): v
   }, async (request, reply) => {
     const tenantId = request.tenantId as string
     const { tier, idempotency_key: idempotencyKey } = request.body
+    const requestKey = idempotencyKey ?? `recharge-order:${tenantId}:${newId('req')}`
+    const configuredRechargeMode = opts.rechargeMode ?? process.env.RECHARGE_MODE
+    const mockRecharge = configuredRechargeMode === 'mock' ||
+      (process.env.NODE_ENV !== 'production' && configuredRechargeMode !== 'manual')
+    if (!mockRecharge) {
+      const existing = db.prepare('SELECT * FROM recharge_order WHERE request_key = ?').get(requestKey) as
+        | { id: string; tier_yuan: number; points: number; status: string }
+        | undefined
+      if (existing) {
+        return reply.status(existing.status === 'pending' ? 202 : 200).send({
+          order: existing, pending: existing.status === 'pending', replayed: true,
+          message: existing.status === 'pending' ? '充值申请已提交，等待运营确认收款' : '充值订单已处理',
+        })
+      }
+      const points = credit.getPrice(PRICE_KEYS.rechargeTier(tier), DEFAULT_PRICES.recharge[tier])
+      const order = { id: newId('ro'), tier_yuan: tier, points, status: 'pending' }
+      db.prepare(`INSERT INTO recharge_order (id, tenant_id, user_id, tier_yuan, points, request_key)
+                  VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(order.id, tenantId, request.userId, tier, points, requestKey)
+      db.prepare(`INSERT INTO audit_log (tenant_id, user_id, action, object_type, object_id, detail, ip)
+                  VALUES (?,?,?,?,?,?,?)`)
+        .run(tenantId, request.userId, 'recharge.request', 'recharge_order', order.id,
+          `提交充值申请 ¥${tier}，待确认到账 ${points} 积分`, request.ip)
+      return reply.status(202).send({
+        order, pending: true, replayed: false,
+        message: '充值申请已提交，请按约定完成对公转账；运营确认收款后积分到账',
+      })
+    }
+
     const r = credit.recharge({
       tenantId,
       userId: request.userId as string,
       tier,
-      idempotencyKey,
+      idempotencyKey: requestKey,
     })
     // 审计：充值记录（FR-703 充值记录留痕）
     db.prepare(`INSERT INTO audit_log (tenant_id, user_id, action, object_type, object_id, detail, ip)

@@ -18,6 +18,7 @@ import type {
   PriceConfigResponse,
   PriceConfigUpdateResponse,
   RechargeResponse,
+  RechargeOrder,
   RegisterResponse,
   RoundSettleResponse,
   ScenariosResponse,
@@ -253,6 +254,15 @@ export const api = {
 
   adminAdjust: (body: { tenant_id: string; amount: number; note?: string }) =>
     request<AdminAdjustResponse>('/api/v1/admin/adjust', { method: 'POST', body: JSON.stringify(body) }),
+
+  adminRechargeOrders: (status: 'pending' | 'confirmed' | 'cancelled' = 'pending') =>
+    request<{ data: RechargeOrder[] }>(`/api/v1/admin/recharge-orders?status=${status}`),
+
+  adminConfirmRecharge: (id: string, note?: string) =>
+    request<{ order_id: string; balance: number; points?: number; replayed: boolean; message: string }>(
+      `/api/v1/admin/recharge-orders/${encodeURIComponent(id)}/confirm`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    ),
 
   /** 导出 CSV（带 token；返回文本，前端可解析渲染或触发下载） */
   adminExport: (params: { tenant_id?: string; type?: string } = {}) => {

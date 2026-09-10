@@ -10,6 +10,20 @@ import { Errors } from '../utils/errors'
 export function registerAuthRoutes(app: FastifyInstance, jwtSecret: string): void {
   const db = app.db
 
+  interface CurrentUserRow {
+    id: string
+    tenant_id: string
+    role: 'owner' | 'employee'
+    name: string
+    user_status: string
+    tenant_name: string
+    industry: string
+    tenant_status: string
+    balance: number
+    trial_sessions_used: number
+    trial_session_limit: number
+  }
+
   // ---------- 当前用户信息（受保护：全部角色） ----------
   app.get('/api/v1/auth/me', { preHandler: [authenticate(jwtSecret)] }, async (request) => {
     const { userId, role } = request
@@ -26,7 +40,7 @@ export function registerAuthRoutes(app: FastifyInstance, jwtSecret: string): voi
              t.trial_sessions_used, t.trial_session_limit
       FROM user u JOIN tenant t ON t.id = u.tenant_id
       WHERE u.id = ?
-    `).get(userId)
+    `).get(userId) as CurrentUserRow | undefined
     if (!row) throw Errors.unauthorized('账号不存在')
 
     return {

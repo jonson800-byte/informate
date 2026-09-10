@@ -143,18 +143,31 @@ function createBullmqQueue(opts: TaskQueueOptions): TaskQueue {
   }
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { Queue, Worker } = require('bullmq') as {
-    Queue: new (name: string, cfg: { connection: { url: string } }) => {
-      add(name: string, data: unknown, cfg: { jobId: string; removeOnComplete: number }): Promise<unknown>
+    Queue: new (name: string, cfg: { connection: Record<string, unknown> }) => {
+      add(name: string, data: unknown, cfg: Record<string, unknown>): Promise<unknown>
       close(): Promise<void>
     }
     Worker: new (name: string, fn: (job: { id: string; data: QueueTask }) => Promise<unknown>, cfg: {
-      connection: { url: string }; concurrency: number
+      connection: Record<string, unknown>; concurrency: number
     }) => {
       on(event: 'completed' | 'failed', cb: (job: { id: string; returnvalue?: unknown }, err?: Error) => void): void
       close(): Promise<void>
     }
   }
-  const connection = { url: opts.redisUrl ?? process.env.REDIS_URL ?? 'redis://localhost:6379' }
+  const redisUrl = new URL(opts.redisUrl ?? process.env.REDIS_URL ?? 'redis://localhost:6379')
+  if (redisUrl.protocol !== 'redis:' && redisUrl.protocol !== 'rediss:') {
+    throw new Error('REDIS_URL 仅支持 redis:// 或 rediss://')
+  }
+  const dbPart = redisUrl.pathname.replace(/^\//, '')
+  const connection: Record<string, unknown> = {
+    host: redisUrl.hostname,
+    port: Number(redisUrl.port || 6379),
+    maxRetriesPerRequest: null,
+  }
+  if (redisUrl.username) connection.username = decodeURIComponent(redisUrl.username)
+  if (redisUrl.password) connection.password = decodeURIComponent(redisUrl.password)
+  if (dbPart) connection.db = Number(dbPart)
+  if (redisUrl.protocol === 'rediss:') connection.tls = {}
   const queueName = 'informate-image-tasks'
   const queue = new Queue(queueName, { connection })
   const worker = new Worker(queueName, async (job) => opts.processor(job.data), {
@@ -168,7 +181,13 @@ function createBullmqQueue(opts: TaskQueueOptions): TaskQueue {
   return {
     enqueue(task) {
       // jobId = task.id → BullMQ 对同 id 任务去重（幂等入队）
-      void queue.add(task.id, task, { jobId: task.id, removeOnComplete: 100 }).catch((err: Error) => {
+      void queue.add(task.id, task, {
+        jobId: task.id,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: 100,
+        removeOnFail: 500,
+      }).catch((err: Error) => {
         emitter.emit('failed', task.id, err)
       })
       return true

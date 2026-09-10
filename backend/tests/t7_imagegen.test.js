@@ -63,6 +63,7 @@ test.before(async () => {
     jwtSecret: 't7-test-secret',
     artifactsDir: ARTIFACTS_DIR,
     seedreamMockDelayMs: MOCK_DELAY,
+    imageComplianceCheck: async () => ({ blocked: false, reason: null }),
   })
   await app.ready()
   const db = app.db

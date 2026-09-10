@@ -3,7 +3,7 @@
 **B 端 AI 能力平台** —— 让企业用 AI 干活。Chat 驱动多 Agent 聚合页：左栏场景列表、中栏对话、右栏产出物，一个窗口完成行业工作助手、营销内容生成等场景化任务。
 
 > 零号客户行业：医疗美容（行业工作助手 + 生成图片）
-> 当前状态：✅ MVP 开发完成（batchA-E 全部通过验收），准备零号客户试点
+> 当前状态：✅ 试点交付基线完成（真实 DeepSeek/Seedream 适配、Redis 队列、生产充值订单、Docker 部署）
 
 ---
 
@@ -25,7 +25,7 @@
    │ proxy /api
    ▼
 Node.js API (Fastify + TypeScript + SQLite)
-   ├─ Chat 会话服务 ── Hermes api_server（mock/real 双模式，SSE 流式）
+   ├─ Chat 会话服务 ── DeepSeek 直连 / Hermes（可切换，SSE 流式）
    │                    └─ Hindsight 记忆（租户×场景独立 bank）
    ├─ 生图执行器 ── Seedream 5.0 + 任务队列（内存 FIFO / BullMQ）
    ├─ 积分管线 ── 冻结/结算/解冻（幂等事务）
@@ -36,7 +36,7 @@ Node.js API (Fastify + TypeScript + SQLite)
 - **后端**：Node.js ≥20 · TypeScript · Fastify · better-sqlite3 · JWT 三角色鉴权
 - **前端**：React 18 · Vite 5 · TypeScript（零 UI 框架依赖）
 - **合规**：Python 3.11 · FastAPI · 纯 Python AC 自动机 + 正则规则引擎（0 外部依赖）
-- **队列**：无 Redis 时内存 FIFO；配置 `REDIS_URL` 自动切换 BullMQ
+- **队列**：开发环境可用内存 FIFO；生产强制 Redis + BullMQ
 
 ## 🚀 快速启动（开发环境）
 
@@ -74,7 +74,7 @@ cd ../frontend && npm install && npm run dev
 
 ## 🧪 测试与验收
 
-- 后端单测：`cd backend && npm test`（租户/积分/Chat/生图/合规，全绿）
+- 后端单测：`cd backend && npm test`（68 项：租户/积分/Chat/生图/合规/真实供应商适配/生产充值，全绿）
 - 压测：`bash scripts/stress_test.sh`（5 并发会话 + 10 并发生图，实测 Chat P95 862ms / 生图 11.3s / 计费 6/6）
 - 验收方法论：每批次 Codex RedTeam 交叉校验 + QA 独立复验，全部通过后才进入下一批
 
@@ -83,17 +83,28 @@ cd ../frontend && npm install && npm run dev
 - [x] 决策闭环（Q1-Q29 + D1-D5）
 - [x] 设计门评审（QA + Codex 双线）
 - [x] MVP 开发（batchA-E：后端/前端/合规/压测/部署手册）
-- [ ] 真实模型接入（Hermes 对话 + Seedream 生图，试点前置）
+- [x] 真实模型接入（DeepSeek 直连/Hermes 可切换 + Seedream REST）
 - [ ] 零号客户试点（医美：部署 → 试用 → 反馈 → 迭代）
 - [ ] 视频场景增购（H3 / Seedance）、场景库扩充（多行业）
 
 ## ⚠️ 部署注意事项（上线前必读）
 
 - 生产环境必须注入 `JWT_SECRET`（未注入则拒绝启动）
-- 当前生图为 mock 模式，真实 Seedream 接入为试点前置任务（`VOLC_ARK_API_KEY`）
+- 生产必须配置 `CHAT_PROVIDER`、DeepSeek/Hermes 凭据、`VOLC_ARK_API_KEY`、`VOLC_ARK_SEEDREAM_MODEL` 和 `REDIS_URL`
+- 生产充值采用“提交订单→运营确认收款→积分到账”，禁止 mock 直接到账
 - 计费定价需按 DeepSeek 最新官方价重算落参（见 `docs/上线合规与定价重算报告.md`）
 - 医美行业内容发布需人工审核 + 《医疗广告审查证明》（FR-209）
 
+## 🐳 生产部署（试点）
+
+```bash
+cp .env.example .env        # 填入真实密钥、域名和 Hindsight 地址
+docker compose up -d --build
+curl http://127.0.0.1:8088/ready
+```
+
+`/health` 仅检查进程与数据库；`/ready` 同时检查合规、记忆和生产供应商配置。首次部署前仍需完成客户协议、医美广告资质审核、密钥注入和真实 API 小流量验收。
+
 ---
 
-*Informate · B 端 AI 能力平台 · 2026-08-08*
+*Informate · B 端 AI 能力平台 · 2026-08-25*

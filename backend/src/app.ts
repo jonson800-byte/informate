@@ -16,6 +16,7 @@ import { registerAdminCreditRoutes } from './routes/admin_credit'
 import { registerChatRoutes, type ChatRouteOptions } from './routes/chat'
 import { registerImageGenRoutes } from './routes/imagegen'
 import { installSecurity } from './middleware/security'
+import type { SignOptions } from 'jsonwebtoken'
 
 /** Fastify 类型扩展：app.db 全局数据库实例 */
 declare module 'fastify' {
@@ -27,12 +28,15 @@ declare module 'fastify' {
 export interface BuildAppOptions {
   dbPath?: string
   jwtSecret?: string
-  jwtExpiresIn?: string
+  jwtExpiresIn?: SignOptions['expiresIn']
   logger?: boolean
   /** 生图产物落盘目录（T7；默认 backend/data/artifacts） */
   artifactsDir?: string
   /** 测试注入：mock 生图延迟区间（毫秒，默认 1000~3000） */
   seedreamMockDelayMs?: [number, number]
+  /** 测试/私有部署可注入生图合规检查，生产默认调用 compliance HTTP 服务。 */
+  imageComplianceCheck?: (prompt: string) => Promise<{ blocked?: boolean; reason?: string | null }>
+  rechargeMode?: 'mock' | 'manual'
   /** T6 Chat 路由选项（Hermes 客户端 / 记忆 / 合规服务地址，测试可注入 mock） */
   chat?: ChatRouteOptions
   /** 安全加固开关（限流/响应头；测试传 false 避免限流干扰，默认 true） */
@@ -48,7 +52,7 @@ export interface BuildAppOptions {
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const dbPath = opts.dbPath ?? config.dbPath
   const jwtSecret = opts.jwtSecret ?? config.jwtSecret
-  const jwtExpiresIn = opts.jwtExpiresIn ?? config.jwtExpiresIn
+  const jwtExpiresIn = (opts.jwtExpiresIn ?? config.jwtExpiresIn) as SignOptions['expiresIn']
 
   // 连接数据库（默认 data/informate.db，测试传 :memory:）
   const db = createDb(dbPath)
@@ -77,7 +81,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   registerScenarioRoutes(app, jwtSecret)             // /scenarios + /scenarios/deploy
   registerWorkspaceRoutes(app, jwtSecret)
   registerAdminRoutes(app, jwtSecret)                // /admin/tenants
-  registerCreditRoutes(app, jwtSecret)               // /credit/*（积分管线，T5）
+  registerCreditRoutes(app, jwtSecret, { rechargeMode: opts.rechargeMode }) // /credit/*（积分管线，T5）
   registerAdminCreditRoutes(app, jwtSecret)          // /admin/overview|adjust|export|price-config（T5）
   registerChatRoutes(app, jwtSecret, opts.chat)      // /chat/messages（Chat 会话服务，T6）
 
@@ -91,6 +95,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   registerImageGenRoutes(app, jwtSecret, {
     artifactsDir: opts.artifactsDir ?? config.artifactsDir,
     seedream: opts.seedreamMockDelayMs ? { mockDelayMs: opts.seedreamMockDelayMs } : undefined,
+    complianceCheck: opts.imageComplianceCheck,
   })
 
   return app

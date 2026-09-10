@@ -257,7 +257,7 @@ export function registerChatRoutes(app: FastifyInstance, jwtSecret: string, opts
       }
 
       try {
-        for await (const chunk of hermesClient.streamChat({ messages, userId, sessionId: convId, signal: ac.signal })) {
+        for await (const chunk of hermesClient.streamChat({ messages, tenantId, sessionId: convId, signal: ac.signal })) {
           replyText += chunk
           chunkBuffer += chunk
           // 句末标点或缓冲达阈值 → 切块过闸

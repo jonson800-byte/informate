@@ -12,6 +12,20 @@ interface DeployBody {
   industry_bank?: string       // 行业知识叠加层 bank（Q28，可选覆盖）
 }
 
+interface DeploymentListRow {
+  id: string
+  scenario_id: string
+  scenario_version: string
+  display_name: string
+  industry_bank: string | null
+  status: string
+  deployed_at: string
+  package_name: string | null
+  emoji: string | null
+  pricing_unit: string | null
+  deduct_points: number | null
+}
+
 /**
  * 场景路由（技术方案 §四 4.1）
  * - GET  /api/v1/scenarios：场景列表（从 scenario_deployment 按租户查，仅 active，FR-103）
@@ -35,7 +49,7 @@ export function registerScenarioRoutes(app: FastifyInstance, jwtSecret: string):
       LEFT JOIN scenario_package p ON p.id = d.scenario_id
       WHERE d.tenant_id = ? AND d.status = 'active'
       ORDER BY d.deployed_at ASC
-    `).all(tenantId)
+    `).all(tenantId) as DeploymentListRow[]
 
     // 归一化响应：场景元数据 + 计费信息（pricing.unit 区分 session/image，G2）
     return {
