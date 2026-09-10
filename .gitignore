@@ -9,3 +9,7 @@ __pycache__/
 .DS_Store
 .hermes/
 data/informate.db.bak-chain
+
+# 模型迁移/编辑备份文件不入库
+*.bak-model-*
+*.bak-*
